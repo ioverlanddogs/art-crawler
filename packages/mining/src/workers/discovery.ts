@@ -2,19 +2,89 @@ import { prisma } from '../lib/db.js';
 import { loadActiveConfig } from '../lib/config.js';
 import { fetchQueue } from '../queues.js';
 import { enqueueNextStage } from '../lib/stage-chaining.js';
+import { isSourceHealthy } from '../lib/source-health.js';
 
 export async function runDiscovery(enqueueNext = true) {
   const cfg = await loadActiveConfig();
-  const candidate = await prisma.miningCandidate.create({
-    data: {
-      sourceUrl: 'https://example.com/events/1',
-      status: 'DISCOVERED',
-      configVersion: cfg.version
-    }
+  const activeSources = await prisma.trustedSource.findMany({
+    where: { status: 'ACTIVE' },
+    orderBy: { trustTier: 'desc' }
   });
-  await prisma.pipelineTelemetry.create({ data: { stage: 'discovery', status: 'success', candidateId: candidate.id, configVersion: cfg.version } });
-  if (enqueueNext) {
-    await enqueueNextStage(fetchQueue, 'fetch', candidate.id);
+
+  const recentThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  let lastCandidate = null;
+
+  for (const source of activeSources) {
+    if (!isSourceHealthy(source)) {
+      await prisma.pipelineTelemetry.create({
+        data: {
+          stage: 'discovery',
+          status: 'skip',
+          configVersion: cfg.version,
+          detail: JSON.stringify({ sourceId: source.id, reason: 'source_unhealthy_or_paused' })
+        }
+      });
+      continue;
+    }
+
+    const duplicate = await prisma.miningCandidate.findFirst({
+      where: {
+        OR: [{ sourceUrl: source.seedUrl }, { canonicalUrl: source.seedUrl }],
+        createdAt: { gte: recentThreshold }
+      }
+    });
+
+    if (duplicate) {
+      await prisma.pipelineTelemetry.create({
+        data: {
+          stage: 'discovery',
+          status: 'skip',
+          candidateId: duplicate.id,
+          configVersion: cfg.version,
+          detail: JSON.stringify({ sourceId: source.id, reason: 'recent_duplicate_seed_url' })
+        }
+      });
+      continue;
+    }
+
+    const candidate = await prisma.miningCandidate.create({
+      data: {
+        sourceUrl: source.seedUrl,
+        sourceId: source.id,
+        sourceDomain: source.domain,
+        discoveredFromUrl: source.seedUrl,
+        canonicalUrl: source.seedUrl,
+        discoveryMethod: 'seeded_registry',
+        entityType: source.sourceType,
+        region: source.region,
+        status: 'DISCOVERED',
+        configVersion: cfg.version
+      }
+    });
+
+    await prisma.trustedSource.update({
+      where: { id: source.id },
+      data: { lastDiscoveredAt: new Date() }
+    });
+
+    await prisma.pipelineTelemetry.create({
+      data: {
+        stage: 'discovery',
+        status: 'success',
+        candidateId: candidate.id,
+        configVersion: cfg.version,
+        detail: JSON.stringify({ sourceId: source.id, discoveryMethod: 'seeded_registry' })
+      }
+    });
+
+    if (enqueueNext) {
+      await enqueueNextStage(fetchQueue, 'fetch', candidate.id);
+    }
+    lastCandidate = candidate;
   }
-  return candidate;
+
+  if (!lastCandidate) {
+    throw new Error('No eligible trusted sources found for discovery');
+  }
+  return lastCandidate;
 }
