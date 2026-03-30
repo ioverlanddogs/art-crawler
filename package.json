@@ -1,0 +1,16 @@
+{
+  "name": "artio-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "packages/app",
+    "packages/mining"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @artio/app & npm run dev -w @artio/mining",
+    "build": "npm run build -ws",
+    "test": "npm run test -ws",
+    "lint": "npm run lint -ws",
+    "typecheck": "npm run typecheck -ws"
+  }
+}

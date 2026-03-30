@@ -1,0 +1,13 @@
+name: deploy-app-production
+on:
+  workflow_dispatch:
+jobs:
+  deploy-app-production:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: echo "Placeholder workflow for deploy-app-production; configure secrets and deploy commands."
