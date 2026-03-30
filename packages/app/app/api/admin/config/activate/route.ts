@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { z } from 'zod';
-import { authOptions } from '@/lib/auth';
+import { forbidden } from '@/lib/api/response';
+import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -14,14 +14,29 @@ const schema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !['ADMIN', 'ANALYST'].includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  let session;
+  try {
+    session = await requireRole(['operator', 'admin']);
+  } catch {
+    return forbidden();
   }
+
   const { id, reason } = schema.parse(await req.json());
+  const target = await prisma.pipelineConfigVersion.findUnique({ where: { id } });
+  if (!target) {
+    return NextResponse.json({ error: 'Pipeline config version not found' }, { status: 404 });
+  }
+
   const active = await prisma.$transaction(async (tx) => {
-    await tx.pipelineConfigVersion.updateMany({ data: { isActive: false } });
-    const nextActive = await tx.pipelineConfigVersion.update({ where: { id }, data: { isActive: true } });
+    await tx.pipelineConfigVersion.updateMany({
+      where: { region: target.region, status: 'ACTIVE', id: { not: id } },
+      data: { status: 'ARCHIVED' }
+    });
+    const nextActive = await tx.pipelineConfigVersion.update({
+      where: { id },
+      data: { status: 'ACTIVE', activatedAt: new Date(), activatedBy: session.user.id, changeReason: reason }
+    });
+
     await tx.pipelineTelemetry.create({
       data: {
         stage: 'config_activate',
@@ -30,7 +45,9 @@ export async function POST(req: Request) {
         configVersion: nextActive.version
       }
     });
+
     return nextActive;
   });
+
   return NextResponse.json(active);
 }

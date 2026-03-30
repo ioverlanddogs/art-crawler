@@ -7,7 +7,7 @@ import { prisma } from '@/lib/db';
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const [session, pendingCount, failureCount24h] = await Promise.all([
     getServerSession(authOptions),
-    prisma.candidate.count({ where: { status: 'PENDING' } }),
+    prisma.ingestExtractedEvent.count({ where: { status: 'PENDING' } }),
     prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: inLast24Hours() } } })
   ]);
 
@@ -15,24 +15,24 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     {
       label: 'Operations',
       items: [
-        { href: '/dashboard', label: 'Dashboard', roles: ['ADMIN', 'ANALYST', 'REVIEWER'] },
-        { href: '/moderation', label: 'Moderation Queue', badgeCount: pendingCount, roles: ['ADMIN', 'REVIEWER'] },
-        { href: '/pipeline', label: 'Pipeline', roles: ['ADMIN', 'ANALYST'] }
+        { href: '/dashboard', label: 'Dashboard', roles: ['admin', 'operator', 'moderator'] },
+        { href: '/moderation', label: 'Moderation Queue', badgeCount: pendingCount, roles: ['admin', 'moderator'] },
+        { href: '/pipeline', label: 'Pipeline', roles: ['admin', 'operator'] }
       ]
     },
     {
       label: 'Investigations',
       items: [
-        { href: '/investigations', label: 'Case Workspace', roles: ['ADMIN', 'ANALYST', 'REVIEWER'] },
-        { href: '/data', label: 'Data Quality', roles: ['ADMIN', 'ANALYST'] },
-        { href: '/discovery', label: 'Discovery', roles: ['ADMIN', 'ANALYST'] }
+        { href: '/investigations', label: 'Case Workspace', roles: ['admin', 'operator', 'moderator'] },
+        { href: '/data', label: 'Data Quality', roles: ['admin', 'operator'] },
+        { href: '/discovery', label: 'Discovery', roles: ['admin', 'operator'] }
       ]
     },
     {
       label: 'Configuration',
       items: [
-        { href: '/config', label: 'Config & Models', roles: ['ADMIN', 'ANALYST'] },
-        { href: '/system', label: 'System Health', roles: ['ADMIN', 'ANALYST'] }
+        { href: '/config', label: 'Config & Models', roles: ['admin', 'operator'] },
+        { href: '/system', label: 'System Health', roles: ['admin', 'operator'] }
       ]
     }
   ];

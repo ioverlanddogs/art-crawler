@@ -169,14 +169,14 @@ export async function runVerticalSlice() {
   const { runMature } = await import('./workers/mature.js');
   const { runExport } = await import('./workers/export.js');
 
-  const candidate = await runDiscovery();
-  await runFetch(candidate.id);
-  await runExtract(candidate.id);
-  await runNormalise(candidate.id);
-  await runScore(candidate.id);
-  await runDeduplicate(candidate.id);
-  await runEnrich(candidate.id);
-  await runMature(candidate.id);
+  const candidate = await runDiscovery(false);
+  await runFetch(candidate.id, false);
+  await runExtract(candidate.id, undefined, false);
+  await runNormalise(candidate.id, false);
+  await runScore(candidate.id, false);
+  await runDeduplicate(candidate.id, false);
+  await runEnrich(candidate.id, false);
+  await runMature(candidate.id, false);
   await runExport(candidate.id);
   return candidate.id;
 }

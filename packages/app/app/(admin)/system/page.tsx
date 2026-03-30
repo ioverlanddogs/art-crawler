@@ -30,8 +30,8 @@ export default async function SystemPage() {
   const [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult] = await Promise.allSettled([
     prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } }),
     prisma.siteSetting.findUnique({ where: { key: 'pipeline_drain_mode' } }),
-    prisma.pipelineConfigVersion.findFirst({ where: { isActive: true }, orderBy: { version: 'desc' } }),
-    prisma.modelVersion.findFirst({ where: { isActive: true }, orderBy: { createdAt: 'desc' } }),
+    prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { version: 'desc' } }),
+    prisma.modelVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } }),
     prisma.pipelineTelemetry.findMany({ orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.pipelineTelemetry.findMany({ where: { stage: { in: [...RECOVERY_AUDIT_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 80 })
   ]);

@@ -97,6 +97,11 @@ export async function processImportBatch(prisma: PrismaClient, payload: unknown)
         }
       });
 
+      if (!visibleInModeration) {
+        skipped += 1;
+        continue;
+      }
+
       const score = Math.round(event.miningConfidenceScore);
       await prisma.ingestExtractedEvent.create({
         data: {
@@ -114,7 +119,7 @@ export async function processImportBatch(prisma: PrismaClient, payload: unknown)
           fingerprint,
           confidenceScore: score,
           confidenceBand: confidenceBandFromScore(score),
-          status: visibleInModeration ? 'PENDING' : 'DUPLICATE',
+          status: 'PENDING',
           miningConfidenceScore: score,
           miningObservationCount: event.observationCount,
           miningCrossSourceCount: event.crossSourceMatches ?? 0,

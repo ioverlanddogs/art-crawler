@@ -19,9 +19,10 @@ function pageTitleFromPath(pathname: string, navGroups: AdminNavGroup[]): string
 }
 
 function roleLabel(role?: string | null) {
-  if (role === 'ADMIN') return 'Administrator';
-  if (role === 'ANALYST') return 'Operator';
-  if (role === 'REVIEWER') return 'Moderator';
+  if (role === 'admin') return 'Administrator';
+  if (role === 'operator') return 'Operator';
+  if (role === 'moderator') return 'Moderator';
+  if (role === 'viewer') return 'Viewer';
   return 'Unscoped';
 }
 

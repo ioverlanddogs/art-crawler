@@ -1,7 +1,8 @@
 import { prisma } from '../lib/db.js';
 import { loadActiveConfig } from '../lib/config.js';
+import { fetchQueue } from '../queues.js';
 
-export async function runDiscovery() {
+export async function runDiscovery(enqueueNext = true) {
   const cfg = await loadActiveConfig();
   const candidate = await prisma.miningCandidate.create({
     data: {
@@ -11,5 +12,8 @@ export async function runDiscovery() {
     }
   });
   await prisma.pipelineTelemetry.create({ data: { stage: 'discovery', status: 'success', candidateId: candidate.id, configVersion: cfg.version } });
+  if (enqueueNext) {
+    await fetchQueue.add('fetch', { candidateId: candidate.id });
+  }
   return candidate;
 }
