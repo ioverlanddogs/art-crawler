@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
+import { authFailure } from '@/lib/api/response';
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
 
@@ -28,10 +29,7 @@ export async function POST(request: Request) {
   try {
     session = await requireRole(['operator', 'admin']);
   } catch (error) {
-    if (error instanceof Response) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: error.status || 403 });
-    }
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return authFailure(error);
   }
 
   const payload = schema.parse(await request.json());

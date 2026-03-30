@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { forbidden } from '@/lib/api/response';
+import { authFailure } from '@/lib/api/response';
 import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 
@@ -16,8 +16,8 @@ export async function POST(request: Request, { params }: { params: { id: string 
   let session;
   try {
     session = await requireRole(['operator', 'admin']);
-  } catch {
-    return forbidden();
+  } catch (error) {
+    return authFailure(error);
   }
   const { reason } = schema.parse(await request.json());
   const activeConfig = await prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { version: 'desc' } });

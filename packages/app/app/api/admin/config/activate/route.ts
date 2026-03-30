@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { forbidden } from '@/lib/api/response';
+import { authFailure } from '@/lib/api/response';
 import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 
@@ -18,8 +18,8 @@ export async function POST(req: Request) {
   let session;
   try {
     session = await requireRole(['operator', 'admin']);
-  } catch {
-    return forbidden();
+  } catch (error) {
+    return authFailure(error);
   }
 
   const { id, reason } = schema.parse(await req.json());

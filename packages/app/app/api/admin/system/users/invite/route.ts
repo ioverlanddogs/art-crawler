@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
-import { err, forbidden, ok } from '@/lib/api/response';
+import { authFailure, err, ok } from '@/lib/api/response';
 
 const schema = z.object({
   email: z.string().email(),
@@ -15,8 +15,8 @@ export async function POST(req: Request) {
   let session;
   try {
     session = await requireRole(['admin']);
-  } catch {
-    return forbidden();
+  } catch (error) {
+    return authFailure(error);
   }
 
   const parsed = schema.safeParse(await req.json());

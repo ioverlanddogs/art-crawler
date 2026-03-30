@@ -1,13 +1,13 @@
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
-import { err, forbidden, ok } from '@/lib/api/response';
+import { authFailure, err, ok } from '@/lib/api/response';
 
 export async function POST(_: Request, { params }: { params: { id: string } }) {
   let session;
   try {
     session = await requireRole(['moderator', 'operator', 'admin']);
-  } catch {
-    return forbidden();
+  } catch (error) {
+    return authFailure(error);
   }
 
   const result = await prisma.$transaction(async (tx) => {

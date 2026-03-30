@@ -1,13 +1,13 @@
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
-import { err, forbidden, ok } from '@/lib/api/response';
+import { authFailure, ok } from '@/lib/api/response';
 import { parsePagination } from '@/lib/api/pagination';
 
 export async function GET(req: Request) {
   try {
     await requireRole(['viewer', 'moderator', 'operator', 'admin']);
-  } catch {
-    return forbidden();
+  } catch (error) {
+    return authFailure(error);
   }
 
   const url = new URL(req.url);
