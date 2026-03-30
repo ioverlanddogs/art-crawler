@@ -6,14 +6,13 @@ declare module 'next-auth' {
       id: string;
       email?: string | null;
       name?: string | null;
-      role: string;
+      role: 'viewer' | 'moderator' | 'operator' | 'admin';
+      status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
     };
   }
-}
 
-declare module 'next-auth/jwt' {
-  interface JWT {
-    id?: string;
-    role?: string;
+  interface User {
+    role: 'viewer' | 'moderator' | 'operator' | 'admin';
+    status: 'ACTIVE' | 'PENDING' | 'SUSPENDED';
   }
 }
