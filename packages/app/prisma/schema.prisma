@@ -8,41 +8,404 @@ datasource db {
   directUrl = env("DATABASE_URL_DIRECT")
 }
 
-enum UserRole {
-  ADMIN
-  REVIEWER
-  ANALYST
+enum AdminRole {
+  viewer
+  moderator
+  operator
+  admin
 }
 
-enum CandidateStatus {
+enum AdminUserStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+}
+
+enum PipelineConfigStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum ModelVersionStatus {
+  SHADOW
+  ACTIVE
+  ARCHIVED
+}
+
+enum ConfidenceBand {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum IngestExtractedStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DUPLICATE
+}
+
+enum DiscoveryStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum DiscoveryTemplateSource {
+  manual
+  ai_suggested
+}
+
+enum DiscoveryTemplateStatus {
+  ACTIVE
+  SUSPENDED
+  CONVERGED
+  ARCHIVED
+}
+
+enum DiscoverySuggestionStatus {
   PENDING
   APPROVED
   REJECTED
 }
 
-model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
+enum EnrichmentRunStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+model AdminUser {
+  id            String           @id @default(cuid())
+  email         String           @unique
   name          String?
-  role          UserRole  @default(REVIEWER)
+  role          AdminRole        @default(viewer)
+  status        AdminUserStatus  @default(PENDING)
   passwordHash  String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  invitesSent   Invite[]  @relation("InviteSender")
+  lastLoginAt   DateTime?
+  createdAt     DateTime         @default(now())
+  createdById   String?
+  createdBy     AdminUser?       @relation("AdminUserCreator", fields: [createdById], references: [id])
+  createdUsers  AdminUser[]      @relation("AdminUserCreator")
+  invites       AdminInvite[]
   accounts      Account[]
   sessions      Session[]
 }
 
-model Invite {
-  id         String   @id @default(cuid())
-  email      String
-  token      String   @unique
-  role       UserRole
+model AdminInvite {
+  id         String    @id @default(cuid())
+  userId     String
+  tokenHash  String    @unique
   expiresAt  DateTime
-  acceptedAt DateTime?
-  createdAt  DateTime @default(now())
-  senderId   String
-  sender     User     @relation("InviteSender", fields: [senderId], references: [id])
+  usedAt     DateTime?
+  createdAt  DateTime  @default(now())
+  user       AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model PipelineConfigVersion {
+  id           String               @id @default(cuid())
+  region       String
+  version      Int
+  status       PipelineConfigStatus @default(DRAFT)
+  configJson   Json
+  changeReason String?
+  activatedAt  DateTime?
+  activatedBy  String?
+  createdAt    DateTime             @default(now())
+  createdBy    String?
+
+  @@unique([region, version])
+  @@index([region, status])
+}
+
+model ModelVersion {
+  id            String             @id @default(cuid())
+  entityType    String
+  name          String
+  version       String
+  coefficients  Json
+  intercept     Float
+  status        ModelVersionStatus @default(SHADOW)
+  promotedAt    DateTime?
+  promotedBy    String?
+  shadowMetrics Json?
+  createdAt     DateTime           @default(now())
+
+  @@index([entityType, status])
+}
+
+model Venue {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String?   @unique
+  domain      String?   @unique
+  timezone    String?
+  region      String?
+  latitude    Float?
+  longitude   Float?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  events      Event[]
+  ingestRuns  IngestRun[]
+  extractedEvents IngestExtractedEvent[]
+}
+
+model Artist {
+  id          String    @id @default(cuid())
+  name        String
+  slug        String?   @unique
+  bio         String?
+  imageUrl    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Artwork {
+  id          String    @id @default(cuid())
+  title       String
+  slug        String?   @unique
+  description String?
+  imageUrl    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Event {
+  id          String    @id @default(cuid())
+  venueId     String?
+  title       String
+  startAt     DateTime
+  endAt       DateTime?
+  timezone    String?
+  location    String?
+  description String?
+  sourceUrl   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  venue       Venue?    @relation(fields: [venueId], references: [id])
+}
+
+model IngestExtractedEvent {
+  id                          String                @id @default(cuid())
+  region                      String?
+  configVersion               Int?
+  venueId                     String?
+  title                       String
+  startAt                     DateTime
+  endAt                       DateTime?
+  timezone                    String?
+  locationText                String?
+  description                 String?
+  artistNames                 String[]
+  imageUrl                    String?
+  sourceUrl                   String?
+  confidenceScore             Int
+  confidenceBand              ConfidenceBand
+  confidenceReasons           Json?
+  fingerprint                 String                @unique
+  clusterKey                  String?
+  duplicateOfId               String?
+  source                      String
+  status                      IngestExtractedStatus @default(PENDING)
+  moderatedBy                 String?
+  moderatedAt                 DateTime?
+  rejectionReason             String?
+  autoApproved                Boolean               @default(false)
+  autoApprovedAt              DateTime?
+  miningConfidenceScore       Int?
+  miningObservationCount      Int?
+  miningCrossSourceCount      Int?
+  importBatchId               String?
+  artioEventId                String?
+  ingestRunId                 String?
+  createdAt                   DateTime              @default(now())
+  updatedAt                   DateTime              @updatedAt
+  venue                       Venue?                @relation(fields: [venueId], references: [id])
+  importBatch                 ImportBatch?          @relation(fields: [importBatchId], references: [id])
+  ingestRun                   IngestRun?            @relation(fields: [ingestRunId], references: [id])
+  duplicateOf                 IngestExtractedEvent? @relation("EventDuplicates", fields: [duplicateOfId], references: [id])
+  duplicates                  IngestExtractedEvent[]@relation("EventDuplicates")
+
+  @@index([fingerprint])
+  @@index([region, status])
+  @@index([clusterKey])
+  @@index([confidenceBand, status, createdAt(sort: Desc)])
+  @@index([importBatchId])
+}
+
+model IngestExtractedArtist {
+  id                    String                @id @default(cuid())
+  name                  String
+  sourceUrl             String?
+  confidenceScore       Int
+  confidenceBand        ConfidenceBand
+  confidenceReasons     Json?
+  fingerprint           String                @unique
+  clusterKey            String?
+  duplicateOfId         String?
+  source                String
+  status                IngestExtractedStatus @default(PENDING)
+  moderatedBy           String?
+  moderatedAt           DateTime?
+  rejectionReason       String?
+  autoApproved          Boolean               @default(false)
+  autoApprovedAt        DateTime?
+  importBatchId         String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([fingerprint])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model IngestExtractedArtwork {
+  id                    String                @id @default(cuid())
+  title                 String
+  artistName            String?
+  sourceUrl             String?
+  confidenceScore       Int
+  confidenceBand        ConfidenceBand
+  confidenceReasons     Json?
+  fingerprint           String                @unique
+  clusterKey            String?
+  duplicateOfId         String?
+  source                String
+  status                IngestExtractedStatus @default(PENDING)
+  moderatedBy           String?
+  moderatedAt           DateTime?
+  rejectionReason       String?
+  autoApproved          Boolean               @default(false)
+  autoApprovedAt        DateTime?
+  importBatchId         String?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+
+  @@index([fingerprint])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model ImportBatch {
+  id                 String               @id @default(cuid())
+  externalBatchId    String               @unique
+  source             String
+  region             String
+  status             String
+  importedCount      Int                  @default(0)
+  skippedCount       Int                  @default(0)
+  errorCount         Int                  @default(0)
+  feedbackReceivedAt DateTime?
+  createdAt          DateTime             @default(now())
+  events             IngestExtractedEvent[]
+
+  @@index([region, createdAt(sort: Desc)])
+}
+
+model IngestRun {
+  id              String    @id @default(cuid())
+  venueId         String?
+  startedAt       DateTime
+  completedAt     DateTime?
+  fetchStatusCode Int?
+  extractMethod   String?
+  tokenCostUsd    Float?
+  provider        String?
+  status          String
+  errorMessage    String?
+  createdAt       DateTime  @default(now())
+  venue           Venue?    @relation(fields: [venueId], references: [id])
+  events          IngestExtractedEvent[]
+
+  @@index([createdAt(sort: Desc)])
+}
+
+model PipelineTelemetry {
+  id            String   @id @default(cuid())
+  stage         String
+  status        String
+  detail        String?
+  configVersion Int?
+  entityId      String?
+  entityType    String?
+  pipelineRunId String?
+  durationMs    Int?
+  metadata      Json?
+  createdAt     DateTime @default(now())
+
+  @@index([stage, createdAt(sort: Desc)])
+  @@index([pipelineRunId, createdAt])
+}
+
+model VenueProfile {
+  id              String          @id @default(cuid())
+  domain          String          @unique
+  name            String?
+  eventsPageUrl   String?
+  region          String
+  platformType    String?
+  requiresJs      Boolean         @default(false)
+  ingestFrequency String?
+  lastCrawledAt   DateTime?
+  candidateYield  Int             @default(0)
+  approvalRate    Float           @default(0)
+  status          DiscoveryStatus @default(ACTIVE)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+}
+
+model DiscoveryTemplate {
+  id         String                  @id @default(cuid())
+  region     String
+  template   String
+  source     DiscoveryTemplateSource
+  status     DiscoveryTemplateStatus @default(ACTIVE)
+  alpha      Float                   @default(1)
+  beta       Float                   @default(1)
+  totalJobs  Int                     @default(0)
+  lastYieldAt DateTime?
+  createdAt  DateTime                @default(now())
+
+  @@index([region, status])
+}
+
+model DiscoveryGoal {
+  id        String   @id @default(cuid())
+  region    String   @unique
+  target    Int
+  deadline  DateTime?
+  createdAt DateTime @default(now())
+}
+
+model DiscoverySuggestion {
+  id           String                    @id @default(cuid())
+  region       String
+  template     String
+  reason       String?
+  status       DiscoverySuggestionStatus @default(PENDING)
+  reviewedBy   String?
+  reviewedAt   DateTime?
+  rejectReason String?
+  createdAt    DateTime                  @default(now())
+
+  @@index([region, status])
+}
+
+model EnrichmentRun {
+  id               String              @id @default(cuid())
+  entityType       String
+  entityId         String
+  template         String
+  status           EnrichmentRunStatus
+  fieldsChanged    String[]
+  confidenceBefore Int?
+  confidenceAfter  Int?
+  sourceUrl        String?
+  metadata         Json?
+  createdAt        DateTime            @default(now())
+
+  @@index([entityType, entityId, createdAt(sort: Desc)])
 }
 
 model SiteSetting {
@@ -51,71 +414,8 @@ model SiteSetting {
   updatedAt DateTime @updatedAt
 }
 
-model PipelineConfigVersion {
-  id          String   @id @default(cuid())
-  version     Int      @unique
-  isActive    Boolean  @default(false)
-  configJson  Json
-  createdAt   DateTime @default(now())
-}
-
-model ModelVersion {
-  id             String   @id @default(cuid())
-  name           String
-  version        String
-  coefficients   Json
-  intercept      Float
-  isActive       Boolean  @default(false)
-  isShadow       Boolean  @default(false)
-  promotedAt     DateTime?
-  createdAt      DateTime @default(now())
-}
-
-model Candidate {
-  id              String          @id @default(cuid())
-  title           String
-  sourceUrl       String
-  sourcePlatform  String
-  fingerprint     String          @unique
-  configVersion   Int
-  status          CandidateStatus @default(PENDING)
-  confidenceScore Float           @default(0)
-  dedupClusterId  String?
-  importBatchId   String
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  confidenceHistory ConfidenceHistory[]
-}
-
-model ConfidenceHistory {
-  id            String   @id @default(cuid())
-  candidateId   String
-  modelVersionId String?
-  score         Float
-  signals       Json
-  createdAt     DateTime @default(now())
-  candidate     Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-}
-
-model ImportBatch {
-  id            String   @id @default(cuid())
-  externalBatchId String @unique
-  status        String
-  createdAt     DateTime @default(now())
-}
-
-model PipelineTelemetry {
-  id            String   @id @default(cuid())
-  stage         String
-  status        String
-  detail        String?
-  configVersion Int
-  candidateId   String?
-  createdAt     DateTime @default(now())
-}
-
 model Account {
-  id                String  @id @default(cuid())
+  id                String    @id @default(cuid())
   userId            String
   type              String
   provider          String
@@ -127,17 +427,17 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
 
 model Session {
-  id           String   @id @default(cuid())
-  sessionToken String   @unique
+  id           String    @id @default(cuid())
+  sessionToken String    @unique
   userId       String
   expires      DateTime
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model VerificationToken {
