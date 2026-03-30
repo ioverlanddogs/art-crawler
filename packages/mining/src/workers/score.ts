@@ -4,10 +4,14 @@ import { inferScore } from '../lib/model.js';
 import { deduplicateQueue } from '../queues.js';
 import { enqueueNextStage } from '../lib/stage-chaining.js';
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
 export async function runScore(candidateId: string, enqueueNext = true) {
   const c = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId }, include: { source: true } });
-  const norm = (c.normalizedJson as any) ?? {};
-  const ext = (c.extractedJson as any) ?? {};
+  const norm = asRecord(c.normalizedJson);
+  const ext = asRecord(c.extractedJson);
   const extractionCompleteness = [ext.title ?? ext.name, ext.startDate ?? ext.startAt, ext.location ?? ext.venue]
     .filter(Boolean).length / 3;
   const signals = computeSignals({

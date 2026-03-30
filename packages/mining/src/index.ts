@@ -15,6 +15,10 @@ const runtimeEnv = (() => {
 
 const workerConnection = new Redis(runtimeEnv?.redisUrl ?? 'redis://localhost:6379');
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function getCandidateId(jobData: unknown): string {
   const candidateId = (jobData as { candidateId?: unknown })?.candidateId;
   if (typeof candidateId !== 'string' || !candidateId) {
@@ -31,9 +35,9 @@ function registerWorkers() {
         const { runDiscovery } = await import('./workers/discovery.js');
         const c = await runDiscovery();
         console.log(`[mining:discovery] created candidate ${c.id}`);
-      } catch (e: any) {
-        console.error('[mining:discovery] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:discovery] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -46,9 +50,9 @@ function registerWorkers() {
       try {
         const { runFetch } = await import('./workers/fetch.js');
         await runFetch(candidateId);
-      } catch (e: any) {
-        console.error('[mining:fetch] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:fetch] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -61,9 +65,9 @@ function registerWorkers() {
       try {
         const { runExtract } = await import('./workers/extract.js');
         await runExtract(candidateId);
-      } catch (e: any) {
-        console.error('[mining:extract] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:extract] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -76,9 +80,9 @@ function registerWorkers() {
       try {
         const { runNormalise } = await import('./workers/normalise.js');
         await runNormalise(candidateId);
-      } catch (e: any) {
-        console.error('[mining:normalise] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:normalise] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -91,9 +95,9 @@ function registerWorkers() {
       try {
         const { runScore } = await import('./workers/score.js');
         await runScore(candidateId);
-      } catch (e: any) {
-        console.error('[mining:score] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:score] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -106,9 +110,9 @@ function registerWorkers() {
       try {
         const { runDeduplicate } = await import('./workers/deduplicate.js');
         await runDeduplicate(candidateId);
-      } catch (e: any) {
-        console.error('[mining:deduplicate] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:deduplicate] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -121,9 +125,9 @@ function registerWorkers() {
       try {
         const { runEnrich } = await import('./workers/enrich.js');
         await runEnrich(candidateId);
-      } catch (e: any) {
-        console.error('[mining:enrich] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:enrich] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -136,9 +140,9 @@ function registerWorkers() {
       try {
         const { runMature } = await import('./workers/mature.js');
         await runMature(candidateId);
-      } catch (e: any) {
-        console.error('[mining:mature] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:mature] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
@@ -151,9 +155,9 @@ function registerWorkers() {
       try {
         const { runExport } = await import('./workers/export.js');
         await runExport(candidateId);
-      } catch (e: any) {
-        console.error('[mining:export] error:', e.message);
-        throw e;
+      } catch (error: unknown) {
+        console.error('[mining:export] error:', getErrorMessage(error));
+        throw error;
       }
     },
     { connection: workerConnection }
