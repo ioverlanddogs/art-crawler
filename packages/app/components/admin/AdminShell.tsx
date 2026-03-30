@@ -24,10 +24,12 @@ function roleLabel(role?: string | null) {
 export function AdminShell({
   navGroups,
   user,
+  opsSignals,
   children
 }: {
   navGroups: AdminNavGroup[];
   user?: AdminUserInfo;
+  opsSignals?: { pendingCount: number; failureCount24h: number };
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -66,10 +68,21 @@ export function AdminShell({
           <div>
             <p className="admin-kicker">Admin Console</p>
             <p className="admin-title">{pageTitle}</p>
+            <p className="muted">
+              Queue {opsSignals?.pendingCount ?? 0} · Failures(24h) {opsSignals?.failureCount24h ?? 0}
+            </p>
           </div>
-          <div className="user-pill">
-            <p>{user?.name || user?.email || 'Unknown User'}</p>
-            <span>{user?.role || 'No Role'}</span>
+          <div className="topbar-actions">
+            <Link href="/moderation" className="action-button variant-secondary">
+              Open Queue
+            </Link>
+            <Link href="/investigations" className="action-button variant-secondary">
+              Investigate
+            </Link>
+            <div className="user-pill">
+              <p>{user?.name || user?.email || 'Unknown User'}</p>
+              <span>{user?.role || 'No Role'}</span>
+            </div>
           </div>
         </header>
         <div className="admin-content">{children}</div>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ActionButton, AlertBanner, DataTable, EmptyState, SectionCard, StatusBadge } from '@/components/admin';
 
 type Candidate = {
@@ -14,11 +15,17 @@ type Candidate = {
 };
 
 export function ModerationClient({ initialItems, failureCount }: { initialItems: Candidate[]; failureCount: number }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [items, setItems] = useState(initialItems);
-  const [query, setQuery] = useState('');
-  const [platformFilter, setPlatformFilter] = useState('all');
-  const [selectedId, setSelectedId] = useState<string | null>(initialItems[0]?.id ?? null);
+  const [query, setQuery] = useState(searchParams.get('q') ?? '');
+  const [platformFilter, setPlatformFilter] = useState(searchParams.get('platform') ?? 'all');
+  const [selectedId, setSelectedId] = useState<string | null>(searchParams.get('selected') ?? initialItems[0]?.id ?? null);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<'approve' | 'reject' | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -32,23 +39,80 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
       .sort((a, b) => b.confidenceScore - a.confidenceScore);
   }, [items, platformFilter, query]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    query ? params.set('q', query) : params.delete('q');
+    platformFilter !== 'all' ? params.set('platform', platformFilter) : params.delete('platform');
+    selectedId ? params.set('selected', selectedId) : params.delete('selected');
+    const next = params.toString();
+    const current = searchParams.toString();
+    if (next !== current) {
+      router.replace(next ? `${pathname}?${next}` : pathname, { scroll: false });
+    }
+  }, [pathname, platformFilter, query, router, searchParams, selectedId]);
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      if (!visibleItems.length) return;
+      if (event.key === '/') {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        return;
+      }
+      const currentIndex = visibleItems.findIndex((item) => item.id === selectedId);
+      if (event.key.toLowerCase() === 'j') {
+        const target = visibleItems[Math.min(currentIndex + 1, visibleItems.length - 1)] ?? visibleItems[0];
+        setSelectedId(target.id);
+      }
+      if (event.key.toLowerCase() === 'k') {
+        const safeIndex = currentIndex <= 0 ? 0 : currentIndex - 1;
+        const target = visibleItems[safeIndex] ?? visibleItems[0];
+        setSelectedId(target.id);
+      }
+      if (event.key.toLowerCase() === 'a' && selectedId) {
+        void moderate(selectedId, 'approve');
+      }
+      if (event.key.toLowerCase() === 'r' && selectedId) {
+        void moderate(selectedId, 'reject');
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedId, visibleItems]);
+
+  useEffect(() => {
+    if (!selected && visibleItems.length > 0) {
+      setSelectedId(visibleItems[0].id);
+    }
+  }, [selected, visibleItems]);
+
   const selected = visibleItems.find((item) => item.id === selectedId) ?? null;
   const platforms = Array.from(new Set(items.map((item) => item.sourcePlatform))).sort();
 
   async function moderate(id: string, action: 'approve' | 'reject') {
     setSubmittingId(id);
+    setBusyAction(action);
     setError(null);
     setSuccess(null);
     try {
-      const res = await fetch(`/api/admin/moderation/${id}/${action}`, { method: 'POST' });
+      const res = await fetch(`/api/admin/moderation/${id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedStatus: 'PENDING',
+          reason: action === 'reject' ? rejectReason.trim() || undefined : undefined
+        })
+      });
       if (!res.ok) throw new Error(`Action failed with status ${res.status}`);
       setItems((prev) => prev.filter((item) => item.id !== id));
       setSelectedId((prev) => (prev === id ? null : prev));
       setSuccess(`Candidate ${action === 'approve' ? 'approved' : 'rejected'} successfully.`);
+      setRejectReason('');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setSubmittingId(null);
+      setBusyAction(null);
     }
   }
 
@@ -62,7 +126,13 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
       <div className="two-col">
       <SectionCard title="Moderation Queue" subtitle="Approve or reject pending candidates from mining imports.">
         <div className="filters-row">
-          <input className="input" placeholder="Search title or URL" value={query} onChange={(e) => setQuery(e.target.value)} />
+          <input
+            ref={searchInputRef}
+            className="input"
+            placeholder="Search title or URL (/)"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <select className="select" value={platformFilter} onChange={(e) => setPlatformFilter(e.target.value)}>
             <option value="all">All Platforms</option>
             {platforms.map((platform) => (
@@ -85,7 +155,11 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
               key: 'title',
               header: 'Candidate',
               render: (row) => (
-                <button type="button" className="action-button variant-secondary" onClick={() => setSelectedId(row.id)}>
+                <button
+                  type="button"
+                  className={`action-button variant-secondary ${selectedId === row.id ? 'row-selected' : ''}`}
+                  onClick={() => setSelectedId(row.id)}
+                >
                   {row.title}
                 </button>
               )
@@ -98,12 +172,13 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
               header: 'Actions',
               render: (row) => (
                 <div className="filters-row">
-                  <ActionButton submitting={submittingId === row.id} onClick={() => moderate(row.id, 'approve')}>
+                  <ActionButton submitting={submittingId === row.id && busyAction === 'approve'} onClick={() => moderate(row.id, 'approve')}>
                     Approve
                   </ActionButton>
                   <ActionButton
                     variant="danger"
                     disabled={submittingId === row.id}
+                    submitting={submittingId === row.id && busyAction === 'reject'}
                     onClick={() => moderate(row.id, 'reject')}
                   >
                     Reject
@@ -139,9 +214,20 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
               <StatusBadge tone="warning">{selected.status}</StatusBadge>
             </div>
             <div>
+              <p className="muted">Reject reason (optional)</p>
+              <textarea
+                className="input"
+                value={rejectReason}
+                rows={3}
+                placeholder="Add review context for auditability."
+                onChange={(event) => setRejectReason(event.target.value)}
+              />
+            </div>
+            <div>
               <p className="muted">Received</p>
               <p>{new Date(selected.createdAt).toLocaleString()}</p>
             </div>
+            <p className="muted">Keyboard: j/k move · a approve · r reject · / search</p>
           </div>
         )}
       </SectionCard>

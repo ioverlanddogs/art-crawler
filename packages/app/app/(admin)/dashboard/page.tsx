@@ -1,15 +1,25 @@
 import { AlertBanner, DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import Link from 'next/link';
+
+export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
-  const [pendingCount, approvedToday, rejectedToday, batchesToday, recentCandidates, queueAttention, recentFailures] = await Promise.all([
+  const [pendingCount, approvedToday, rejectedToday, batchesToday, recentCandidates, queueAttention, recentFailures, failureHotspots] = await Promise.all([
     prisma.candidate.count({ where: { status: 'PENDING' } }),
     prisma.candidate.count({ where: { status: 'APPROVED', updatedAt: { gte: startOfDayUtc() } } }),
     prisma.candidate.count({ where: { status: 'REJECTED', updatedAt: { gte: startOfDayUtc() } } }),
     prisma.importBatch.count({ where: { createdAt: { gte: startOfDayUtc() } } }),
     prisma.candidate.findMany({ orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.pipelineTelemetry.groupBy({ by: ['status'], _count: { status: true }, where: { createdAt: { gte: startOfDayUtc() } } }),
-    prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: inLast24Hours() } } })
+    prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: inLast24Hours() } } }),
+    prisma.pipelineTelemetry.groupBy({
+      by: ['stage'],
+      _count: { stage: true },
+      where: { status: 'failure', createdAt: { gte: inLast24Hours() } },
+      orderBy: { _count: { stage: 'desc' } },
+      take: 5
+    })
   ]);
 
   const attentionRows = queueAttention.map((row) => ({ id: row.status, status: row.status, count: row._count.status }));
@@ -34,7 +44,11 @@ export default async function DashboardPage() {
 
       {recentFailures > 0 ? (
         <AlertBanner tone="warning" title="Degraded pipeline state">
-          One or more stages failed in the last 24 hours. Route items with low confidence through investigations before approval.
+          One or more stages failed in the last 24 hours. Route low confidence items to{' '}
+          <Link href="/investigations" className="inline-link">
+            Investigation Workspace
+          </Link>{' '}
+          before approving.
         </AlertBanner>
       ) : null}
 
@@ -73,6 +87,27 @@ export default async function DashboardPage() {
           />
         </SectionCard>
       </div>
+
+      <SectionCard title="Failure Drilldown" subtitle="Top failing stages and direct jump paths for triage.">
+        <DataTable
+          rows={failureHotspots}
+          rowKey={(row) => row.stage}
+          emptyState={<EmptyState title="No hotspots" description="No stage failures in the previous 24 hours." />}
+          columns={[
+            { key: 'stage', header: 'Stage', render: (row) => row.stage },
+            { key: 'count', header: 'Failures', render: (row) => row._count.stage },
+            {
+              key: 'investigate',
+              header: 'Action',
+              render: (row) => (
+                <Link className="inline-link" href={`/investigations?stage=${encodeURIComponent(row.stage)}`}>
+                  Open in investigations
+                </Link>
+              )
+            }
+          ]}
+        />
+      </SectionCard>
     </div>
   );
 }

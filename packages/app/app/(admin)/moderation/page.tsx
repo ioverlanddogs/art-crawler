@@ -3,6 +3,8 @@ import { prisma } from '@/lib/db';
 import { listModerationCandidates } from '@/lib/pipeline/import-service';
 import { ModerationClient } from './ModerationClient';
 
+export const dynamic = 'force-dynamic';
+
 export default async function ModerationPage() {
   const [items, failures] = await Promise.all([
     listModerationCandidates(prisma),
