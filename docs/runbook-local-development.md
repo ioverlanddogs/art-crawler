@@ -8,7 +8,7 @@
 `npm run prisma:generate -w @artio/app`
 `npm run prisma:generate -w @artio/mining`
 `npm run prisma:push -w @artio/app`
-`# If DATABASE_URL_DIRECT is unset, @artio/app prisma:push uses DATABASE_URL as fallback.`
+`# DATABASE_URL is required; if DATABASE_URL_DIRECT is unset, @artio/app prisma:push falls back to DATABASE_URL.`
 `npm run prisma:push -w @artio/mining`
 
 ## Seed deterministic demo data

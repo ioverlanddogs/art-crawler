@@ -13,7 +13,7 @@ This document explains environment variables used by the Artio monorepo and whic
 | Variable | Local example | Required in production | Purpose |
 |---|---|---:|---|
 | `DATABASE_URL` | `postgresql://.../artio_app?schema=public` | Yes | Main Prisma connection for the app DB |
-| `DATABASE_URL_DIRECT` | `postgresql://.../artio_app?schema=public` | Yes | Direct DB connection for migrations/admin tasks |
+| `DATABASE_URL_DIRECT` | `postgresql://.../artio_app?schema=public` | Yes | Direct DB connection for migrations/admin tasks (optional for local/CI Prisma push when it can fall back to `DATABASE_URL`) |
 | `NEXTAUTH_SECRET` | `change-me` | Yes | NextAuth signing secret |
 | `NEXTAUTH_URL` | `http://localhost:3000` | Yes | Canonical public app base URL |
 | `MINING_IMPORT_SECRET` | `dev-mining-secret` | Yes | Canonical shared secret for worker-to-app imports |
@@ -50,8 +50,8 @@ Those belong to the mining service runtime.
 ## Prisma command fallback for app (`@artio/app`)
 
 - The app Prisma schema includes `directUrl = env("DATABASE_URL_DIRECT")`.
-- `npm run prisma:push -w @artio/app` automatically falls back to `DATABASE_URL` when `DATABASE_URL_DIRECT` is unset.
-- For local development and CI, setting only `DATABASE_URL` is therefore sufficient for `prisma db push`.
+- `npm run prisma:push -w @artio/app` fails fast with a clear error when `DATABASE_URL` is missing or empty.
+- `DATABASE_URL_DIRECT` is optional for local development and CI because the script falls back to `DATABASE_URL` when `DATABASE_URL_DIRECT` is unset.
 - In managed production environments, keep `DATABASE_URL_DIRECT` explicitly configured (and non-pooled when available).
 
 ## Secret management rules

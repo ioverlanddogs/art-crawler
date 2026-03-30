@@ -26,7 +26,7 @@ npm install
 npm run prisma:generate -w @artio/app
 npm run prisma:generate -w @artio/mining
 npm run prisma:push -w @artio/app
-# @artio/app prisma:push falls back to DATABASE_URL when DATABASE_URL_DIRECT is unset
+# @artio/app prisma:push requires DATABASE_URL; DATABASE_URL_DIRECT falls back to DATABASE_URL when unset
 npm run prisma:push -w @artio/mining
 npm run seed:demo
 ```
