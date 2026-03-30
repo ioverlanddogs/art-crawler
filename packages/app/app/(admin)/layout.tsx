@@ -1,12 +1,21 @@
 import type { ReactNode } from 'react';
-import { getServerSession } from 'next-auth';
 import { AdminShell, type AdminEnvironment, type AdminNavGroup } from '@/components/admin';
-import { authOptions } from '@/lib/auth';
+import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import { requireAdminSession } from '@/lib/auth-guard';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
-  const [session, pendingCount, failureCount24h] = await Promise.all([
-    getServerSession(authOptions),
+  let session;
+  try {
+    session = await requireAdminSession();
+  } catch (error) {
+    if (error instanceof Response && error.status === 401) {
+      redirect('/login');
+    }
+    redirect('/');
+  }
+
+  const [pendingCount, failureCount24h] = await Promise.all([
     prisma.ingestExtractedEvent.count({ where: { status: 'PENDING' } }),
     prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: inLast24Hours() } } })
   ]);
