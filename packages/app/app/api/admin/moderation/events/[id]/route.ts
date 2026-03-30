@@ -1,12 +1,12 @@
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
-import { forbidden, notFound, ok } from '@/lib/api/response';
+import { authFailure, notFound, ok } from '@/lib/api/response';
 
 export async function GET(_: Request, { params }: { params: { id: string } }) {
   try {
     await requireRole(['viewer', 'moderator', 'operator', 'admin']);
-  } catch {
-    return forbidden();
+  } catch (error) {
+    return authFailure(error);
   }
 
   const record = await prisma.ingestExtractedEvent.findUnique({
