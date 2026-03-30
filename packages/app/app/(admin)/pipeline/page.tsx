@@ -7,7 +7,11 @@ import {
   RecoveryStateBanner,
   ReplayEligibilityList,
   SectionCard,
-  StatusBadge
+  StatusBadge,
+  ScopeBadge,
+  SlaBadge,
+  SlaTimerCard,
+  TrendSummaryCard
 } from '@/components/admin';
 import { prisma } from '@/lib/db';
 import Link from 'next/link';
@@ -135,6 +139,10 @@ export default async function PipelinePage() {
   const failingCount = stageMetrics.filter((metric) => metric.health === 'failing').length;
   const degradedCount = stageMetrics.filter((metric) => metric.health === 'degraded').length;
 
+
+  const oldestFailureMinutes = recentFailures[0] ? Math.floor((Date.now() - recentFailures[0].createdAt.getTime()) / 60000) : null;
+  const overdueQueueCount = stageMetrics.filter((metric) => (metric.queueDepth ?? 0) > 40).length;
+
   const replayingSignal = recoveryAuditEvents.find((event) => event.stage === 'recovery_replay_request');
   const blockedReplayReason = importEnabled === false ? 'Replay is blocked while imports are paused.' : drainMode ? 'Replay is blocked while drain mode is active.' : null;
 
@@ -162,12 +170,30 @@ export default async function PipelinePage() {
     <div className="stack">
       <PageHeader title="Pipeline" description="Incident-response view for recovery state, failed work, replay eligibility, and scoped controls." />
 
+      <div className="filters-row"><ScopeBadge scope="team" /><SlaBadge state={oldestFailureMinutes === null ? 'unknown' : oldestFailureMinutes > 180 ? 'breached' : oldestFailureMinutes > 120 ? 'at_risk' : 'healthy'} inferred /></div>
+
       <RecoveryStateBanner
         state={recoveryState}
         inferred={telemetryLimited || drainMode === null}
         context={`Imports: ${importEnabled === null ? 'unknown' : importEnabled ? 'enabled' : 'paused'} · Drain mode: ${drainMode === null ? 'unknown' : drainMode ? 'on' : 'off'} · Failing stages: ${failingCount} · Degraded stages: ${degradedCount}`}
         telemetryGap={telemetryLimited ? 'One or more telemetry datasets could not be loaded. Use caution before replay.' : undefined}
       />
+
+      <div className="three-col">
+        <SlaTimerCard label="Oldest unresolved incident" ageMinutes={oldestFailureMinutes} targetMinutes={120} inferred />
+        <TrendSummaryCard
+          title="Overdue queue trend"
+          trendLabel={`${overdueQueueCount} stages overdue`}
+          trendDirection={overdueQueueCount > 2 ? 'up' : overdueQueueCount > 0 ? 'flat' : 'down'}
+          detail="Overdue inferred when queue depth is above 40 in current sample."
+        />
+        <TrendSummaryCard
+          title="Throughput snapshot"
+          trendLabel={`${stageMetrics.reduce((acc, item) => acc + item.successCount, 0)} successes / 24h`}
+          trendDirection={failingCount > 0 ? 'flat' : 'down'}
+          detail="Leadership throughput summary in current scope."
+        />
+      </div>
 
       <div className="pipeline-grid" role="region" aria-label="Pipeline stage cards">
         {stageMetrics.map((metric) => (

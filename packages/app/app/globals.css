@@ -488,3 +488,16 @@ a { color: inherit; text-decoration: none; }
   outline: 2px solid #2249d8;
   outline-offset: 2px;
 }
+
+.tenant-selector {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.65rem;
+}
+
+.tenant-selector-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
