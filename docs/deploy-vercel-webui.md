@@ -134,7 +134,7 @@ If Vercel builds the repo root instead of `packages/app`, the deployment will fa
 If the build does not run `prisma generate`, the app can fail at runtime.
 
 ### 3. Missing direct DB URL
-Even if the app mostly uses `DATABASE_URL`, operational workflows often still need `DATABASE_URL_DIRECT`.
+Even though `npm run prisma:push -w @artio/app` can fall back to `DATABASE_URL` in local/CI contexts, managed production environments should still set a proper `DATABASE_URL_DIRECT`.
 
 ### 4. Mining deployed to Vercel
 Do not deploy BullMQ workers or schedulers to Vercel. They need a persistent worker platform.
