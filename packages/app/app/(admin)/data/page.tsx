@@ -3,9 +3,9 @@ import { prisma } from '@/lib/db';
 
 export default async function DataPage() {
   const [platformCounts, duplicateClusters, lowConfidence] = await Promise.all([
-    prisma.candidate.groupBy({ by: ['sourcePlatform'], _count: { sourcePlatform: true } }),
-    prisma.candidate.groupBy({ by: ['dedupClusterId'], _count: { dedupClusterId: true }, where: { dedupClusterId: { not: null } } }),
-    prisma.candidate.count({ where: { confidenceScore: { lt: 0.4 } } })
+    prisma.ingestExtractedEvent.groupBy({ by: ['source'], _count: { source: true } }),
+    prisma.ingestExtractedEvent.groupBy({ by: ['clusterKey'], _count: { clusterKey: true }, where: { clusterKey: { not: null } } }),
+    prisma.ingestExtractedEvent.count({ where: { confidenceScore: { lt: 40 } } })
   ]);
 
   const clusterCount = duplicateClusters.length;
@@ -17,17 +17,17 @@ export default async function DataPage() {
         <StatCard label="Source Platforms" value={platformCounts.length} />
         <StatCard label="Dedup Clusters" value={clusterCount} />
         <StatCard label="Low Confidence Items" value={lowConfidence} detail="Score below 40%" />
-        <StatCard label="Tracked Candidates" value={platformCounts.reduce((acc, row) => acc + row._count.sourcePlatform, 0)} />
+        <StatCard label="Tracked Candidates" value={platformCounts.reduce((acc, row) => acc + row._count.source, 0)} />
       </div>
 
       <SectionCard title="Candidates by Platform" subtitle="Current distribution of candidates by ingest source.">
         <DataTable
           rows={platformCounts}
-          rowKey={(row) => row.sourcePlatform}
+          rowKey={(row) => row.source}
           emptyState={<EmptyState title="No candidate data" description="No platform records are available." />}
           columns={[
-            { key: 'platform', header: 'Platform', render: (row) => row.sourcePlatform },
-            { key: 'count', header: 'Candidates', render: (row) => row._count.sourcePlatform }
+            { key: 'platform', header: 'Platform', render: (row) => row.source },
+            { key: 'count', header: 'Candidates', render: (row) => row._count.source }
           ]}
         />
       </SectionCard>

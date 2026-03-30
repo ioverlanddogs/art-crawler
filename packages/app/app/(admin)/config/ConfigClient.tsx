@@ -29,7 +29,6 @@ type ConfigVersion = {
   region?: string | null;
   version: number;
   status?: 'DRAFT' | 'ACTIVE' | 'ARCHIVED' | string;
-  isActive?: boolean;
   configJson?: unknown;
   changeReason?: string | null;
   activatedAt?: string | Date | null;
@@ -44,8 +43,6 @@ type ModelVersion = {
   name: string;
   version: string;
   status?: 'SHADOW' | 'ACTIVE' | 'ARCHIVED' | string;
-  isActive?: boolean;
-  isShadow?: boolean;
   promotedAt?: string | Date | null;
   promotedBy?: string | null;
   shadowMetrics?: unknown;
@@ -92,15 +89,15 @@ function kvFromDetail(detail: string | null) {
 }
 
 function deriveConfigState(version: ConfigVersion): GovernanceState {
-  if (version.isActive || version.status === 'ACTIVE') return 'active';
+  if (version.status === 'ACTIVE') return 'active';
   if (version.status === 'DRAFT') return 'pending';
   if (version.status === 'ARCHIVED') return 'superseded';
   return 'unknown';
 }
 
 function deriveModelState(model: ModelVersion): GovernanceState {
-  if (model.isActive || model.status === 'ACTIVE') return 'active';
-  if (model.isShadow || model.status === 'SHADOW') return 'pending';
+  if (model.status === 'ACTIVE') return 'active';
+  if (model.status === 'SHADOW') return 'pending';
   if (model.status === 'ARCHIVED') return 'superseded';
   return 'unknown';
 }
@@ -214,7 +211,7 @@ export function ConfigClient({
 
   const activeModel = useMemo(() => models.find((item) => deriveModelState(item) === 'active') || null, [models]);
   const shadowModel = useMemo(
-    () => models.find((item) => item.id !== activeModel?.id && (item.isShadow || item.status === 'SHADOW')) || null,
+    () => models.find((item) => item.id !== activeModel?.id && item.status === 'SHADOW') || null,
     [activeModel?.id, models]
   );
 
@@ -282,7 +279,7 @@ export function ConfigClient({
         body: JSON.stringify({ id, reason, confirmText })
       });
       if (!res.ok) throw new Error(`Activate failed with status ${res.status}`);
-      setVersions((prev) => prev.map((item) => ({ ...item, isActive: item.id === id, status: item.id === id ? 'ACTIVE' : item.status })));
+      setVersions((prev) => prev.map((item) => ({ ...item, status: item.id === id ? 'ACTIVE' : item.status === 'ACTIVE' ? 'ARCHIVED' : item.status })));
       pushToast({ tone: 'success', title: `Config version ${version} is now active.` });
     } catch (err) {
       pushToast({ tone: 'error', title: 'Config activation failed.', description: err instanceof Error ? err.message : 'Unknown error' });
@@ -306,9 +303,7 @@ export function ConfigClient({
       setModels((prev) =>
         prev.map((item) => ({
           ...item,
-          isActive: item.id === id,
-          isShadow: item.id === id ? false : item.isShadow,
-          status: item.id === id ? 'ACTIVE' : item.status
+          status: item.id === id ? 'ACTIVE' : item.status === 'ACTIVE' ? 'ARCHIVED' : item.status
         }))
       );
       pushToast({ tone: 'success', title: `Model ${version} is now live.` });

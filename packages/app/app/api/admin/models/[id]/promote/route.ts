@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
 import { z } from 'zod';
-import { authOptions } from '@/lib/auth';
+import { forbidden } from '@/lib/api/response';
+import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 
 export const runtime = 'nodejs';
@@ -13,17 +13,19 @@ const schema = z.object({
 });
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user || !['ADMIN', 'ANALYST'].includes(session.user.role)) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  let session;
+  try {
+    session = await requireRole(['operator', 'admin']);
+  } catch {
+    return forbidden();
   }
   const { reason } = schema.parse(await request.json());
-  const activeConfig = await prisma.pipelineConfigVersion.findFirst({ where: { isActive: true }, orderBy: { version: 'desc' } });
+  const activeConfig = await prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { version: 'desc' } });
   const promoted = await prisma.$transaction(async (tx) => {
-    await tx.modelVersion.updateMany({ data: { isActive: false } });
+    await tx.modelVersion.updateMany({ where: { status: 'ACTIVE' }, data: { status: 'ARCHIVED' } });
     const activeModel = await tx.modelVersion.update({
       where: { id: params.id },
-      data: { isActive: true, isShadow: false, promotedAt: new Date() }
+      data: { status: 'ACTIVE', promotedAt: new Date(), promotedBy: session.user.id }
     });
     await tx.pipelineTelemetry.create({
       data: {
