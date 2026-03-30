@@ -1,4 +1,5 @@
 import { prisma } from '@/lib/db';
+import type { Prisma } from '@prisma/client';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, err, ok } from '@/lib/api/response';
 
@@ -10,7 +11,7 @@ export async function POST(_: Request, { params }: { params: { id: string } }) {
     return authFailure(error);
   }
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const existing = await tx.ingestExtractedEvent.findUnique({ where: { id: params.id } });
     if (!existing) return null;
 

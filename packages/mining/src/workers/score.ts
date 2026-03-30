@@ -8,6 +8,14 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
 }
 
+function asOptionalString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function asStringOrFallback(value: unknown, fallback: string): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
 export async function runScore(candidateId: string, enqueueNext = true) {
   const c = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId }, include: { source: true } });
   const norm = asRecord(c.normalizedJson);
@@ -15,9 +23,9 @@ export async function runScore(candidateId: string, enqueueNext = true) {
   const extractionCompleteness = [ext.title ?? ext.name, ext.startDate ?? ext.startAt, ext.location ?? ext.venue]
     .filter(Boolean).length / 3;
   const signals = computeSignals({
-    title: norm.title,
+    title: asOptionalString(norm.title),
     sourceUrl: c.sourceUrl,
-    platform: norm.platform ?? 'generic',
+    platform: asStringOrFallback(norm.platform, 'generic'),
     trustTier: c.source?.trustTier,
     parserType: c.parserType,
     extractionCompleteness,

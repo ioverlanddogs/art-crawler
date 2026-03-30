@@ -21,6 +21,11 @@ type InvestigationParams = {
   error?: string;
 };
 
+type CandidateRow = Awaited<ReturnType<typeof prisma.ingestExtractedEvent.findFirst>>;
+type BatchRow = Awaited<ReturnType<typeof prisma.importBatch.findFirst>>;
+type TelemetryRow = Awaited<ReturnType<typeof prisma.pipelineTelemetry.findMany>>[number];
+type TimelineEvent = ReturnType<typeof buildTimeline>[number];
+
 export default async function InvestigationsPage({ searchParams }: { searchParams?: InvestigationParams }) {
   const filters = {
     candidateId: sanitize(searchParams?.candidateId),
@@ -39,7 +44,7 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
   };
 
   const [candidate, batch, telemetryRows] = await Promise.all([
-    safeQuery(
+    safeQuery<CandidateRow | null>(
       () =>
         prisma.ingestExtractedEvent.findFirst({
           where: {
@@ -52,17 +57,17 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
         }),
       null
     ),
-    safeQuery(
+    safeQuery<BatchRow | null>(
       () =>
         filters.importBatchId
           ? prisma.importBatch.findFirst({ where: { id: filters.importBatchId } })
           : prisma.importBatch.findFirst({ where: filters.candidateId ? { events: { some: { id: filters.candidateId } } } : undefined }),
       null
     ),
-    safeQuery(() => prisma.pipelineTelemetry.findMany({ where: telemetryWhere, orderBy: { createdAt: 'desc' }, take: 80 }), [])
+    safeQuery<TelemetryRow[]>(() => prisma.pipelineTelemetry.findMany({ where: telemetryWhere, orderBy: { createdAt: 'desc' }, take: 80 }), [])
   ]);
 
-  const linkedTelemetry = telemetryRows.filter((row) => {
+  const linkedTelemetry = telemetryRows.filter((row: TelemetryRow) => {
     if (candidate?.id && row.entityId === candidate.id) return true;
     if (batch?.id && row.entityId === batch.id) return true;
     if (filters.stage && row.stage.toLowerCase().includes(filters.stage.toLowerCase())) return true;
@@ -79,15 +84,15 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
     lifecycleStages
   });
 
-  const failureCount = linkedTelemetry.filter((row) => row.status === 'failure').length;
-  const retryCount = linkedTelemetry.reduce((acc, row) => acc + (numberFromMetadata(row.metadata, 'retryCount') ?? 0), 0);
+  const failureCount = linkedTelemetry.filter((row: TelemetryRow) => row.status === 'failure').length;
+  const retryCount = linkedTelemetry.reduce((acc: number, row: TelemetryRow) => acc + (numberFromMetadata(row.metadata, 'retryCount') ?? 0), 0);
   const rejectionCount = candidate?.status === 'REJECTED' ? 1 : 0;
   const hasFilters = Object.values(filters).some(Boolean);
 
   const exceptionItems = linkedTelemetry
-    .filter((row) => row.status === 'failure' || (row.detail ?? '').toLowerCase().includes('conflict'))
+    .filter((row: TelemetryRow) => row.status === 'failure' || (row.detail ?? '').toLowerCase().includes('conflict'))
     .slice(0, 15)
-    .map((row) => ({
+    .map((row: TelemetryRow) => ({
       id: row.id,
       title: row.stage,
       reason: row.detail ?? 'No escalation detail captured',
@@ -121,7 +126,7 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
         <AlertBanner tone="danger" title="Blocking/partial failure context detected">
           {failureCount} failures found in the current trace window. Review timeline events and failure notes before moderating.
         </AlertBanner>
-      ) : timeline.some((item) => item.missing) ? (
+      ) : timeline.some((item: TimelineEvent) => item.missing) ? (
         <AlertBanner tone="warning" title="Partial telemetry coverage">
           Some lifecycle events are missing. The timeline marks missing telemetry explicitly.
         </AlertBanner>
@@ -143,10 +148,10 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
                   status: candidate?.status,
                   confidenceScore: candidate?.confidenceScore,
                   configVersion: candidate?.configVersion,
-                  modelVersion: telemetryRows.find((row) => row.stage === 'score')?.detail?.match(/model[:= ]([^,;]+)/i)?.[1] ?? null,
+                  modelVersion: telemetryRows.find((row: TelemetryRow) => row.stage === 'score')?.detail?.match(/model[:= ]([^,;]+)/i)?.[1] ?? null,
                   failureCount,
                   retryCount,
-                  conflictOrRejectCount: rejectionCount + linkedTelemetry.filter((row) => (row.detail ?? '').toLowerCase().includes('conflict')).length
+                  conflictOrRejectCount: rejectionCount + linkedTelemetry.filter((row: TelemetryRow) => (row.detail ?? '').toLowerCase().includes('conflict')).length
                 }
               : null
           }
@@ -171,8 +176,8 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
             summary="Escalation is triggered by failures, conflicts, or missing lifecycle telemetry in this trace window."
             matchedCriteria={[
               `${failureCount} failure event(s) in current trace`,
-              `${timeline.filter((item) => item.missing).length} missing lifecycle stage(s)`,
-              `${linkedTelemetry.filter((row) => (row.detail ?? '').toLowerCase().includes('conflict')).length} conflict marker(s)`
+              `${timeline.filter((item: TimelineEvent) => item.missing).length} missing lifecycle stage(s)`,
+              `${linkedTelemetry.filter((row: TelemetryRow) => (row.detail ?? '').toLowerCase().includes('conflict')).length} conflict marker(s)`
             ]}
             thresholdContext="Confidence thresholds may not be present in investigation telemetry. Missing thresholds are treated as partial context."
             boundaryCopy="When escalation reason is incomplete, human review is mandatory before returning the case to normal automation flow."
@@ -214,12 +219,24 @@ function buildTimeline({
   telemetry,
   lifecycleStages
 }: {
-  candidate: Awaited<ReturnType<typeof prisma.ingestExtractedEvent.findFirst>>;
-  batch: Awaited<ReturnType<typeof prisma.importBatch.findFirst>>;
-  telemetry: Awaited<ReturnType<typeof prisma.pipelineTelemetry.findMany>>;
+  candidate: CandidateRow;
+  batch: BatchRow;
+  telemetry: TelemetryRow[];
   lifecycleStages: string[];
 }) {
-  const events = telemetry.map((row) => ({
+  const events: Array<{
+    id: string;
+    stage: string;
+    timestamp: Date;
+    status: string;
+    configVersion: number | null;
+    modelVersion: string | null;
+    candidateId: string | null | undefined;
+    importBatchId: string | null;
+    pipelineRunId: string | null;
+    notes: string | null;
+    missing: boolean;
+  }> = telemetry.map((row: TelemetryRow) => ({
     id: row.id,
     stage: stageAlias(row.stage),
     timestamp: row.createdAt,

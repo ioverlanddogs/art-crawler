@@ -1,6 +1,14 @@
 import { DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
 import { prisma } from '@/lib/db';
 
+type DiscoveryRow = {
+  id: string;
+  title: string;
+  source: string;
+  createdAt: Date;
+  confidenceScore: number;
+};
+
 export default async function DiscoveryPage() {
   const [recentCandidates, todaysCandidates] = await Promise.all([
     prisma.ingestExtractedEvent.findMany({
@@ -17,28 +25,28 @@ export default async function DiscoveryPage() {
       <div className="stats-grid">
         <StatCard label="New Today" value={todaysCandidates} detail="Candidates discovered today" />
         <StatCard label="Recent Window" value={recentCandidates.length} detail="Most recent sampled rows" />
-        <StatCard label="High Confidence" value={recentCandidates.filter((c) => c.confidenceScore >= 70).length} />
-        <StatCard label="Low Confidence" value={recentCandidates.filter((c) => c.confidenceScore < 40).length} />
+        <StatCard label="High Confidence" value={recentCandidates.filter((c: DiscoveryRow) => c.confidenceScore >= 70).length} />
+        <StatCard label="Low Confidence" value={recentCandidates.filter((c: DiscoveryRow) => c.confidenceScore < 40).length} />
       </div>
 
       <SectionCard title="Recent Discoveries" subtitle="Most recent candidate sources and confidence bands.">
-        <DataTable
+        <DataTable<DiscoveryRow>
           rows={recentCandidates}
-          rowKey={(row) => row.id}
+          rowKey={(row: DiscoveryRow) => row.id}
           emptyState={<EmptyState title="No discoveries yet" description="No candidates are available to evaluate discovery output." />}
           columns={[
-            { key: 'title', header: 'Title', render: (row) => row.title },
-            { key: 'sourcePlatform', header: 'Source', render: (row) => row.source },
+            { key: 'title', header: 'Title', render: (row: DiscoveryRow) => row.title },
+            { key: 'sourcePlatform', header: 'Source', render: (row: DiscoveryRow) => row.source },
             {
               key: 'band',
               header: 'Confidence Band',
-              render: (row) => {
+              render: (row: DiscoveryRow) => {
                 if (row.confidenceScore >= 70) return <StatusBadge tone="success">High</StatusBadge>;
                 if (row.confidenceScore >= 40) return <StatusBadge tone="warning">Medium</StatusBadge>;
                 return <StatusBadge tone="danger">Low</StatusBadge>;
               }
             },
-            { key: 'createdAt', header: 'Discovered', render: (row) => new Date(row.createdAt).toLocaleString() }
+            { key: 'createdAt', header: 'Discovered', render: (row: DiscoveryRow) => new Date(row.createdAt).toLocaleString() }
           ]}
         />
       </SectionCard>

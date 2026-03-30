@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, err, ok } from '@/lib/api/response';
@@ -20,7 +21,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return err('Reject reason is required', 'VALIDATION_ERROR', 400);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const existing = await tx.ingestExtractedEvent.findUnique({ where: { id: params.id } });
     if (!existing) return { kind: 'missing' as const };
 

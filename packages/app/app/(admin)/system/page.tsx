@@ -26,6 +26,17 @@ const RECOVERY_AUDIT_STAGES = [
   'maintenance_flag_change'
 ] as const;
 
+type TelemetryRow = Awaited<ReturnType<typeof prisma.pipelineTelemetry.findMany>>[number];
+type RecoveryAuditEvent = {
+  id: string;
+  stage: string;
+  status: string;
+  detail: string | null;
+  createdAt: string;
+};
+type RecoveryState = 'paused' | 'replaying' | 'draining' | 'partially_recovered' | 'recovered' | 'blocked' | 'unknown';
+const RECOVERY_STATES: RecoveryState[] = ['paused', 'replaying', 'draining', 'partially_recovered', 'recovered', 'blocked', 'unknown'];
+
 export default async function SystemPage() {
   const [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult] = await Promise.allSettled([
     prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } }),
@@ -40,11 +51,13 @@ export default async function SystemPage() {
   const drainFlag = drainFlagResult.status === 'fulfilled' ? drainFlagResult.value : null;
   const activeConfig = activeConfigResult.status === 'fulfilled' ? activeConfigResult.value : null;
   const activeModel = activeModelResult.status === 'fulfilled' ? activeModelResult.value : null;
-  const recentTelemetry = recentTelemetryResult.status === 'fulfilled' ? recentTelemetryResult.value : [];
+  const recentTelemetry: TelemetryRow[] = recentTelemetryResult.status === 'fulfilled' ? recentTelemetryResult.value : [];
   const recoveryAudit =
     recoveryAuditResult.status === 'fulfilled'
-      ? recoveryAuditResult.value.map((row) => ({ id: row.id, stage: row.stage, status: row.status, detail: row.detail, createdAt: row.createdAt.toISOString() }))
-      : [];
+      ? recoveryAuditResult.value.map(
+          (row: TelemetryRow): RecoveryAuditEvent => ({ id: row.id, stage: row.stage, status: row.status, detail: row.detail, createdAt: row.createdAt.toISOString() })
+        )
+      : ([] as RecoveryAuditEvent[]);
 
   const hasPartialData = [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult].some(
     (result) => result.status === 'rejected'
@@ -52,7 +65,7 @@ export default async function SystemPage() {
 
   const importEnabled = importFlag?.value === 'true';
   const drainMode = drainFlag?.value === 'true';
-  const latestReplayRequest = recoveryAudit.find((entry) => entry.stage === 'recovery_replay_request');
+  const latestReplayRequest = recoveryAudit.find((entry: RecoveryAuditEvent) => entry.stage === 'recovery_replay_request');
 
   const staleTelemetryMinutes = recentTelemetry[0] ? Math.floor((Date.now() - new Date(recentTelemetry[0].createdAt).getTime()) / 60000) : null;
   const slaState = staleTelemetryMinutes === null ? 'unknown' : staleTelemetryMinutes > 180 ? 'breached' : staleTelemetryMinutes > 120 ? 'at_risk' : 'healthy';
@@ -111,10 +124,10 @@ export default async function SystemPage() {
 
       <SectionCard title="Recovery state matrix" subtitle="Textual labels for control-plane states, independent of color cues.">
         <div className="recovery-state-grid" role="region" aria-label="Recovery state matrix">
-          {['paused', 'replaying', 'draining', 'partially_recovered', 'recovered', 'blocked', 'unknown'].map((key) => (
+          {RECOVERY_STATES.map((key: RecoveryState) => (
             <div key={key} className="recovery-action-item">
               <p>
-                <RecoveryStateBadge state={key as 'paused' | 'replaying' | 'draining' | 'partially_recovered' | 'recovered' | 'blocked' | 'unknown'} />
+                <RecoveryStateBadge state={key} />
               </p>
               <p className="muted">
                 {key === 'paused' && 'New imports are intentionally held.'}
@@ -131,29 +144,29 @@ export default async function SystemPage() {
       </SectionCard>
 
       <SectionCard title="Telemetry Stream" subtitle="Latest pipeline telemetry events across all stages.">
-        <DataTable
+        <DataTable<TelemetryRow>
           rows={recentTelemetry}
-          rowKey={(row) => row.id}
+          rowKey={(row: TelemetryRow) => row.id}
           emptyState={<EmptyState title="No telemetry" description="No telemetry rows are currently available." />}
           columns={[
-            { key: 'stage', header: 'Stage', render: (row) => row.stage },
+            { key: 'stage', header: 'Stage', render: (row: TelemetryRow) => row.stage },
             {
               key: 'status',
               header: 'Status',
-              render: (row) => (
+              render: (row: TelemetryRow) => (
                 <StatusBadge tone={row.status === 'success' ? 'success' : row.status === 'failure' ? 'danger' : 'warning'}>
                   {row.status}
                 </StatusBadge>
               )
             },
-            { key: 'detail', header: 'Detail', render: (row) => row.detail || '—' },
-            { key: 'createdAt', header: 'Time', render: (row) => new Date(row.createdAt).toLocaleString() }
+            { key: 'detail', header: 'Detail', render: (row: TelemetryRow) => row.detail || '—' },
+            { key: 'createdAt', header: 'Time', render: (row: TelemetryRow) => new Date(row.createdAt).toLocaleString() }
           ]}
         />
       </SectionCard>
 
       <SectionCard title="Recovery action audit" subtitle="Actor, reason, scope, and outcome for replay/retry/pause/resume controls.">
-        <RecoveryAuditFeed events={recoveryAudit} hasGaps={hasPartialData || recoveryAudit.some((event) => !event.detail)} />
+        <RecoveryAuditFeed events={recoveryAudit} hasGaps={hasPartialData || recoveryAudit.some((event: RecoveryAuditEvent) => !event.detail)} />
       </SectionCard>
     </div>
   );
