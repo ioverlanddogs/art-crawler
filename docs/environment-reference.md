@@ -47,6 +47,13 @@ When deploying only the web UI on Vercel, you do **not** need:
 
 Those belong to the mining service runtime.
 
+## Prisma command fallback for app (`@artio/app`)
+
+- The app Prisma schema includes `directUrl = env("DATABASE_URL_DIRECT")`.
+- `npm run prisma:push -w @artio/app` automatically falls back to `DATABASE_URL` when `DATABASE_URL_DIRECT` is unset.
+- For local development and CI, setting only `DATABASE_URL` is therefore sufficient for `prisma db push`.
+- In managed production environments, keep `DATABASE_URL_DIRECT` explicitly configured (and non-pooled when available).
+
 ## Secret management rules
 
 - Never commit production secrets.
