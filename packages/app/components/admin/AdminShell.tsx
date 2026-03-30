@@ -3,7 +3,8 @@
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { AdminNavGroup, AdminUserInfo } from './types';
+import { AccountMenu } from './AccountMenu';
+import type { AdminEnvironment, AdminNavGroup, AdminUserInfo } from './types';
 
 function pageTitleFromPath(pathname: string, navGroups: AdminNavGroup[]): string {
   for (const group of navGroups) {
@@ -24,11 +25,13 @@ function roleLabel(role?: string | null) {
 export function AdminShell({
   navGroups,
   user,
+  environment,
   opsSignals,
   children
 }: {
   navGroups: AdminNavGroup[];
   user?: AdminUserInfo;
+  environment?: AdminEnvironment;
   opsSignals?: { pendingCount: number; failureCount24h: number };
   children: ReactNode;
 }) {
@@ -40,6 +43,16 @@ export function AdminShell({
     }))
     .filter((group) => group.items.length > 0);
   const pageTitle = pageTitleFromPath(pathname, scopedNavGroups);
+  const envLabel =
+    environment === 'production'
+      ? 'Production'
+      : environment === 'preview'
+        ? 'Preview'
+        : environment === 'development'
+          ? 'Development'
+          : 'Unknown';
+  const envTone =
+    environment === 'production' ? 'danger' : environment === 'preview' ? 'warning' : environment === 'development' ? 'info' : 'neutral';
 
   return (
     <div className="admin-shell">
@@ -69,20 +82,19 @@ export function AdminShell({
             <p className="admin-kicker">Admin Console</p>
             <p className="admin-title">{pageTitle}</p>
             <p className="muted">
-              Queue {opsSignals?.pendingCount ?? 0} · Failures(24h) {opsSignals?.failureCount24h ?? 0}
+              Queue {typeof opsSignals?.pendingCount === 'number' ? opsSignals.pendingCount : 'N/A'} · Failures(24h){' '}
+              {typeof opsSignals?.failureCount24h === 'number' ? opsSignals.failureCount24h : 'N/A'}
             </p>
           </div>
           <div className="topbar-actions">
+            <p className={`env-badge tone-${envTone}`}>Environment: {envLabel}</p>
             <Link href="/moderation" className="action-button variant-secondary">
               Open Queue
             </Link>
             <Link href="/investigations" className="action-button variant-secondary">
               Investigate
             </Link>
-            <div className="user-pill">
-              <p>{user?.name || user?.email || 'Unknown User'}</p>
-              <span>{user?.role || 'No Role'}</span>
-            </div>
+            <AccountMenu name={user?.name} email={user?.email} role={user?.role} />
           </div>
         </header>
         <div className="admin-content">{children}</div>

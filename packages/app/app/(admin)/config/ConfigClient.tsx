@@ -1,7 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import { ActionButton, AlertBanner, DataTable, EmptyState, SectionCard, StatusBadge } from '@/components/admin';
+import {
+  ActionButton,
+  AlertBanner,
+  ConfirmDialog,
+  DataTable,
+  EmptyState,
+  SectionCard,
+  StatusBadge,
+  ToastRegion,
+  type ToastMessage
+} from '@/components/admin';
 
 type ConfigVersion = {
   id: string;
@@ -38,64 +48,57 @@ export function ConfigClient({
   const [models, setModels] = useState(initialModels);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [submittingAction, setSubmittingAction] = useState<'activate' | 'promote' | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [changeReason, setChangeReason] = useState('');
-  const [confirmText, setConfirmText] = useState('');
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [confirmState, setConfirmState] = useState<
+    | null
+    | { mode: 'activate'; id: string; version: number }
+    | { mode: 'promote'; id: string; version: string }
+  >(null);
 
-  async function activateVersion(id: string, version: number) {
-    if (confirmText.trim() !== 'ACTIVATE') {
-      setError('Type ACTIVATE to confirm config promotion.');
-      return;
-    }
+  function pushToast(message: Omit<ToastMessage, 'id'>) {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setToasts((prev) => [...prev, { id, ...message }]);
+  }
+
+  async function activateVersion(id: string, version: number, reason?: string, confirmText?: string) {
     setSubmittingId(id);
     setSubmittingAction('activate');
-    setMessage(null);
-    setError(null);
     try {
       const res = await fetch('/api/admin/config/activate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, reason: changeReason, confirmText: 'ACTIVATE' })
+        body: JSON.stringify({ id, reason, confirmText })
       });
       if (!res.ok) throw new Error(`Activate failed with status ${res.status}`);
       setVersions((prev) => prev.map((item) => ({ ...item, isActive: item.id === id })));
-      setMessage(`Version ${version} is now active.`);
-      setConfirmText('');
-      setChangeReason('');
+      pushToast({ tone: 'success', title: `Version ${version} is now active.` });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      pushToast({ tone: 'error', title: 'Config activation failed.', description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
       setSubmittingId(null);
       setSubmittingAction(null);
+      setConfirmState(null);
     }
   }
 
-  async function promoteModel(id: string, version: string) {
-    if (confirmText.trim() !== 'PROMOTE') {
-      setError('Type PROMOTE to confirm model promotion.');
-      return;
-    }
+  async function promoteModel(id: string, version: string, reason?: string, confirmText?: string) {
     setSubmittingId(id);
     setSubmittingAction('promote');
-    setMessage(null);
-    setError(null);
     try {
       const res = await fetch(`/api/admin/models/${id}/promote`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: changeReason, confirmText: 'PROMOTE' })
+        body: JSON.stringify({ reason, confirmText })
       });
       if (!res.ok) throw new Error(`Promote failed with status ${res.status}`);
       setModels((prev) => prev.map((item) => ({ ...item, isActive: item.id === id, isShadow: item.id === id ? false : item.isShadow })));
-      setMessage(`Model ${version} is now active.`);
-      setConfirmText('');
-      setChangeReason('');
+      pushToast({ tone: 'success', title: `Model ${version} is now active.` });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      pushToast({ tone: 'error', title: 'Model promotion failed.', description: err instanceof Error ? err.message : 'Unknown error' });
     } finally {
       setSubmittingId(null);
       setSubmittingAction(null);
+      setConfirmState(null);
     }
   }
 
@@ -104,25 +107,7 @@ export function ConfigClient({
       <AlertBanner tone="warning" title="Safe controls only">
         Config activation and model promotion are manual operations. Investigate active failures before changing production behavior.
       </AlertBanner>
-      {message ? <p className="muted">Success: {message}</p> : null}
-      {error ? <p className="muted">Error: {error}</p> : null}
-      <SectionCard title="Change Safety Gate" subtitle="Every sensitive change requires a reason and typed confirmation token.">
-        <div className="stack">
-          <textarea
-            className="input"
-            rows={3}
-            value={changeReason}
-            onChange={(event) => setChangeReason(event.target.value)}
-            placeholder="Why is this change needed? Include incident/ticket/context."
-          />
-          <input
-            className="input"
-            value={confirmText}
-            onChange={(event) => setConfirmText(event.target.value)}
-            placeholder="Type ACTIVATE for config or PROMOTE for model"
-          />
-        </div>
-      </SectionCard>
+      <ToastRegion messages={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((message) => message.id !== id))} />
       <div className="two-col">
         <SectionCard title="Config Versions" subtitle="Activate a configuration version used by the pipeline.">
           <DataTable
@@ -144,8 +129,8 @@ export function ConfigClient({
                   <ActionButton
                     variant="secondary"
                     submitting={submittingId === row.id && submittingAction === 'activate'}
-                    disabled={row.isActive || changeReason.trim().length < 8}
-                    onClick={() => activateVersion(row.id, row.version)}
+                    disabled={row.isActive || submittingAction !== null}
+                    onClick={() => setConfirmState({ mode: 'activate', id: row.id, version: row.version })}
                   >
                     {row.isActive ? 'Active' : 'Activate'}
                   </ActionButton>
@@ -182,8 +167,8 @@ export function ConfigClient({
                   <ActionButton
                     variant="secondary"
                     submitting={submittingId === row.id && submittingAction === 'promote'}
-                    disabled={row.isActive || changeReason.trim().length < 8}
-                    onClick={() => promoteModel(row.id, row.version)}
+                    disabled={row.isActive || submittingAction !== null}
+                    onClick={() => setConfirmState({ mode: 'promote', id: row.id, version: row.version })}
                   >
                     {row.isActive ? 'Active' : 'Promote'}
                   </ActionButton>
@@ -206,6 +191,29 @@ export function ConfigClient({
           ]}
         />
       </SectionCard>
+      <ConfirmDialog
+        open={confirmState !== null}
+        title={confirmState?.mode === 'activate' ? 'Activate config version?' : 'Promote model version?'}
+        body={
+          confirmState?.mode === 'activate'
+            ? `Version ${confirmState.version} will become active immediately.`
+            : `Model ${confirmState?.version || ''} will become the active scoring model.`
+        }
+        tone="danger"
+        reasonRequired
+        confirmToken={confirmState?.mode === 'activate' ? 'ACTIVATE' : 'PROMOTE'}
+        confirmLabel={confirmState?.mode === 'activate' ? 'Activate Version' : 'Promote Model'}
+        submitting={submittingAction !== null}
+        onCancel={() => setConfirmState(null)}
+        onConfirm={({ reason, confirmText }) => {
+          if (!confirmState) return;
+          if (confirmState.mode === 'activate') {
+            void activateVersion(confirmState.id, confirmState.version, reason, confirmText);
+            return;
+          }
+          void promoteModel(confirmState.id, confirmState.version, reason, confirmText);
+        }}
+      />
     </div>
   );
 }
