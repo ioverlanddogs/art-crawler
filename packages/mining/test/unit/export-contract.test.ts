@@ -7,6 +7,7 @@ describe('mining -> app import contract', () => {
     vi.restoreAllMocks();
     delete process.env.PIPELINE_IMPORT_URL;
     delete process.env.MINING_IMPORT_SECRET;
+    delete process.env.MINING_SERVICE_SECRET;
   });
 
   test('buildExportPayload emits app import request schema', () => {
@@ -47,6 +48,33 @@ describe('mining -> app import contract', () => {
         }
       ]
     });
+  });
+
+
+  test('sendImportBatch uses canonical MINING_IMPORT_SECRET when both env vars are set', async () => {
+    process.env.PIPELINE_IMPORT_URL = 'https://app.example.test/api/pipeline/import';
+    process.env.MINING_IMPORT_SECRET = 'canonical-secret';
+    process.env.MINING_SERVICE_SECRET = 'legacy-secret';
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      async json() {
+        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_123' };
+      }
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await sendImportBatch({ source: 'mining-service-v1', region: 'us', events: [] });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://app.example.test/api/pipeline/import',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer canonical-secret'
+        })
+      })
+    );
   });
 
   test('sendImportBatch parses route response shape', async () => {

@@ -26,7 +26,7 @@ const req = request(
     headers: {
       'content-type': 'application/json',
       'content-length': Buffer.byteLength(payload),
-      authorization: `Bearer ${process.env.MINING_SERVICE_SECRET ?? process.env.MINING_IMPORT_SECRET ?? 'dev-mining-secret'}`
+      authorization: `Bearer ${process.env.MINING_IMPORT_SECRET ?? process.env.MINING_SERVICE_SECRET ?? 'dev-mining-secret'}`
     }
   },
   (res) => {
