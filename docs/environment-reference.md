@@ -2,6 +2,12 @@
 
 This document explains environment variables used by the Artio monorepo and which runtime needs them.
 
+## Canonical naming + compatibility
+
+- `MINING_IMPORT_SECRET` is the canonical shared secret for mining -> app import auth.
+- `MINING_SERVICE_SECRET` remains a deprecated legacy fallback in runtime code only, to avoid breaking older deployments during migration.
+- If both are set, `MINING_IMPORT_SECRET` always wins.
+
 ## App (`packages/app`)
 
 | Variable | Local example | Required in production | Purpose |
@@ -9,8 +15,8 @@ This document explains environment variables used by the Artio monorepo and whic
 | `DATABASE_URL` | `postgresql://.../artio_app?schema=public` | Yes | Main Prisma connection for the app DB |
 | `DATABASE_URL_DIRECT` | `postgresql://.../artio_app?schema=public` | Yes | Direct DB connection for migrations/admin tasks |
 | `NEXTAUTH_SECRET` | `change-me` | Yes | NextAuth signing secret |
-| `NEXTAUTH_URL` | `http://localhost:3000` | Yes | Public app base URL |
-| `MINING_IMPORT_SECRET` | `dev-mining-secret` | Yes | Shared secret for worker-to-app imports |
+| `NEXTAUTH_URL` | `http://localhost:3000` | Yes | Canonical public app base URL |
+| `MINING_IMPORT_SECRET` | `dev-mining-secret` | Yes | Canonical shared secret for worker-to-app imports |
 | `NODE_ENV` | `development` | Yes | Runtime mode |
 
 ## Mining (`packages/mining`)
@@ -19,11 +25,18 @@ This document explains environment variables used by the Artio monorepo and whic
 |---|---|---:|---|
 | `MINING_DATABASE_URL` | `postgresql://.../artio_mining?schema=public` | Yes | Main Prisma connection for mining DB |
 | `MINING_DATABASE_URL_DIRECT` | `postgresql://.../artio_mining?schema=public` | Yes | Direct DB connection for migrations/admin tasks |
-| `REDIS_URL` | `redis://localhost:6379` | Yes | BullMQ / Redis queue backend |
 | `PIPELINE_IMPORT_URL` | `http://localhost:3000/api/pipeline/import` | Yes | Import endpoint exposed by the app |
-| `MINING_IMPORT_SECRET` | `dev-mining-secret` | Yes | Shared secret for authenticated imports |
+| `MINING_IMPORT_SECRET` | `dev-mining-secret` | Yes | Canonical shared secret for authenticated imports |
+| `REDIS_URL` | `redis://localhost:6379` | No (local default) | BullMQ / Redis queue backend |
 | `RUN_ONCE` | `true` | No | Useful for one-shot local/demo runs |
+| `MINING_HEALTH_PORT` | `7301` | No | Health server port (default `7301`) |
 | `NODE_ENV` | `development` | Yes | Runtime mode |
+
+## Test / E2E helper vars
+
+| Variable | Local example | Required | Purpose |
+|---|---|---:|---|
+| `E2E_BASE_URL` | `http://localhost:3000` | No | Playwright target URL (defaults to localhost) |
 
 ## Variables not needed by Vercel
 

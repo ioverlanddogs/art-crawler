@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, err, ok } from '@/lib/api/response';
+import { getAppBaseUrl } from '@/lib/env';
 
 const schema = z.object({
   email: z.string().email(),
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
     }
   });
 
-  const inviteUrl = `${process.env.NEXTAUTH_URL ?? 'http://localhost:3000'}/accept-invite/${rawToken}`;
+  const inviteUrl = `${getAppBaseUrl()}/accept-invite/${rawToken}`;
   console.log(`Invite URL for ${parsed.data.email}: ${inviteUrl}`);
 
   return ok({ inviteUrl });

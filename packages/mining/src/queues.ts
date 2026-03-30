@@ -1,7 +1,8 @@
 import { Queue } from 'bullmq';
 import { Redis } from 'ioredis';
+import { getMiningRedisUrl } from './lib/env.js';
 
-const connection = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+const connection = new Redis(getMiningRedisUrl());
 
 export const discoveryQueue = new Queue('discovery', { connection });
 export const fetchQueue = new Queue('fetch', { connection });

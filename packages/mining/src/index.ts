@@ -1,18 +1,19 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
+import { readMiningRuntimeEnv } from './lib/env.js';
 
-if (process.env.NODE_ENV !== 'test') {
-  const required = ['PIPELINE_IMPORT_URL', 'MINING_DATABASE_URL', 'REDIS_URL'];
-  const missing = required.filter((k) => !process.env[k]);
-  if (!process.env.MINING_IMPORT_SECRET && !process.env.MINING_SERVICE_SECRET) missing.push('MINING_IMPORT_SECRET');
-  if (missing.length) {
-    console.error(`[mining] missing required env vars: ${missing.join(', ')}`);
+const runtimeEnv = (() => {
+  try {
+    return readMiningRuntimeEnv();
+  } catch (error) {
+    if (process.env.NODE_ENV === 'test') return null;
+    console.error(error instanceof Error ? error.message : '[mining] invalid runtime env');
     process.exit(1);
   }
-}
+})();
 
-const workerConnection = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+const workerConnection = new Redis(runtimeEnv?.redisUrl ?? 'redis://localhost:6379');
 
 function getCandidateId(jobData: unknown): string {
   const candidateId = (jobData as { candidateId?: unknown })?.candidateId;
@@ -183,7 +184,7 @@ export async function runVerticalSlice() {
 }
 
 function startHealthServer() {
-  const port = Number(process.env.MINING_HEALTH_PORT ?? 7301);
+  const port = runtimeEnv?.healthPort ?? 7301;
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     if (req.url === '/healthz' || req.url === '/readyz') {
       const body = JSON.stringify({
@@ -205,7 +206,7 @@ function startHealthServer() {
   });
 }
 
-if (process.env.RUN_ONCE === 'true') {
+if (runtimeEnv?.runOnce) {
   runVerticalSlice().then((id) => console.log(`vertical slice done for ${id}`));
 } else {
   startHealthServer();
