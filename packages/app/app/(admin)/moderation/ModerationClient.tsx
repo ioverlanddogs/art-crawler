@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ActionButton, AlertBanner, DataTable, EmptyState, SectionCard, StatusBadge } from '@/components/admin';
+import {
+  ActionButton,
+  AlertBanner,
+  ConfirmDialog,
+  DataTable,
+  EmptyState,
+  SectionCard,
+  StatusBadge,
+  ToastRegion,
+  type ToastMessage
+} from '@/components/admin';
 
 type Candidate = {
   id: string;
@@ -26,8 +36,8 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
   const [submittingId, setSubmittingId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<'approve' | 'reject' | null>(null);
   const [rejectReason, setRejectReason] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [confirmRejectFor, setConfirmRejectFor] = useState<string | null>(null);
 
   const visibleItems = useMemo(() => {
     return items
@@ -73,12 +83,15 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
         void moderate(selectedId, 'approve');
       }
       if (event.key.toLowerCase() === 'r' && selectedId) {
-        void moderate(selectedId, 'reject');
+        setConfirmRejectFor(selectedId);
       }
     }
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [selectedId, visibleItems]);
+
+  const selected = visibleItems.find((item) => item.id === selectedId) ?? null;
+  const platforms = Array.from(new Set(items.map((item) => item.sourcePlatform))).sort();
 
   useEffect(() => {
     if (!selected && visibleItems.length > 0) {
@@ -86,34 +99,39 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
     }
   }, [selected, visibleItems]);
 
-  const selected = visibleItems.find((item) => item.id === selectedId) ?? null;
-  const platforms = Array.from(new Set(items.map((item) => item.sourcePlatform))).sort();
-
-  async function moderate(id: string, action: 'approve' | 'reject') {
+  async function moderate(id: string, action: 'approve' | 'reject', reasonOverride?: string) {
     setSubmittingId(id);
     setBusyAction(action);
-    setError(null);
-    setSuccess(null);
     try {
       const res = await fetch(`/api/admin/moderation/${id}/${action}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           expectedStatus: 'PENDING',
-          reason: action === 'reject' ? rejectReason.trim() || undefined : undefined
+          reason: action === 'reject' ? reasonOverride?.trim() || rejectReason.trim() || undefined : undefined
         })
       });
       if (!res.ok) throw new Error(`Action failed with status ${res.status}`);
       setItems((prev) => prev.filter((item) => item.id !== id));
       setSelectedId((prev) => (prev === id ? null : prev));
-      setSuccess(`Candidate ${action === 'approve' ? 'approved' : 'rejected'} successfully.`);
+      pushToast({ tone: 'success', title: `Candidate ${action === 'approve' ? 'approved' : 'rejected'} successfully.` });
       setRejectReason('');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error');
+      pushToast({
+        tone: 'error',
+        title: `Candidate ${action} failed.`,
+        description: err instanceof Error ? err.message : 'Unknown error'
+      });
     } finally {
       setSubmittingId(null);
       setBusyAction(null);
+      setConfirmRejectFor(null);
     }
+  }
+
+  function pushToast(message: Omit<ToastMessage, 'id'>) {
+    const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setToasts((prev) => [...prev, { id, ...message }]);
   }
 
   return (
@@ -143,8 +161,7 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
           </select>
         </div>
 
-        {error ? <p className="muted">Error: {error}</p> : null}
-        {success ? <p className="muted">Success: {success}</p> : null}
+        <ToastRegion messages={toasts} onDismiss={(id) => setToasts((prev) => prev.filter((message) => message.id !== id))} />
 
         <DataTable
           rows={visibleItems}
@@ -172,14 +189,18 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
               header: 'Actions',
               render: (row) => (
                 <div className="filters-row">
-                  <ActionButton submitting={submittingId === row.id && busyAction === 'approve'} onClick={() => moderate(row.id, 'approve')}>
+                  <ActionButton
+                    submitting={submittingId === row.id && busyAction === 'approve'}
+                    disabled={submittingId !== null}
+                    onClick={() => moderate(row.id, 'approve')}
+                  >
                     Approve
                   </ActionButton>
                   <ActionButton
                     variant="danger"
-                    disabled={submittingId === row.id}
+                    disabled={submittingId !== null}
                     submitting={submittingId === row.id && busyAction === 'reject'}
-                    onClick={() => moderate(row.id, 'reject')}
+                    onClick={() => setConfirmRejectFor(row.id)}
                   >
                     Reject
                   </ActionButton>
@@ -232,6 +253,20 @@ export function ModerationClient({ initialItems, failureCount }: { initialItems:
         )}
       </SectionCard>
       </div>
+      <ConfirmDialog
+        open={Boolean(confirmRejectFor)}
+        title="Reject candidate?"
+        body="This removes the item from the moderation queue. Add a reason to preserve reviewer context."
+        tone="danger"
+        reasonRequired
+        confirmLabel="Reject Candidate"
+        submitting={busyAction === 'reject'}
+        onCancel={() => setConfirmRejectFor(null)}
+        onConfirm={({ reason }) => {
+          if (!confirmRejectFor) return;
+          void moderate(confirmRejectFor, 'reject', reason);
+        }}
+      />
     </div>
   );
 }

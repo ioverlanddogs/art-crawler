@@ -15,3 +15,5 @@ export type AdminUserInfo = {
   email?: string | null;
   role?: string | null;
 };
+
+export type AdminEnvironment = 'production' | 'preview' | 'development' | 'unknown';

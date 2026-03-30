@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { getServerSession } from 'next-auth';
-import { AdminShell, type AdminNavGroup } from '@/components/admin';
+import { AdminShell, type AdminEnvironment, type AdminNavGroup } from '@/components/admin';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
 
@@ -37,9 +37,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     }
   ];
 
+  const environment = resolveEnvironment();
+
   return (
     <AdminShell
       navGroups={navGroups}
+      environment={environment}
       user={{
         name: session?.user?.name,
         email: session?.user?.email,
@@ -54,4 +57,12 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
 function inLast24Hours() {
   return new Date(Date.now() - 24 * 60 * 60 * 1000);
+}
+
+function resolveEnvironment(): AdminEnvironment {
+  const vercelEnv = process.env.VERCEL_ENV;
+  if (vercelEnv === 'production') return 'production';
+  if (vercelEnv === 'preview') return 'preview';
+  if (process.env.NODE_ENV === 'development') return 'development';
+  return 'unknown';
 }
