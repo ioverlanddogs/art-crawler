@@ -1,0 +1,5 @@
+app = "artio-mining"
+primary_region = "ord"
+
+[env]
+  NODE_ENV = "production"

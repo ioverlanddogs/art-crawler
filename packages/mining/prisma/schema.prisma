@@ -1,0 +1,50 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("MINING_DATABASE_URL")
+  directUrl = env("MINING_DATABASE_URL_DIRECT")
+}
+
+model MiningCandidate {
+  id              String   @id @default(cuid())
+  sourceUrl       String
+  html            String?
+  extractedJson   Json?
+  normalizedJson  Json?
+  fingerprint     String?
+  confidenceScore Float?
+  dedupClusterId  String?
+  status          String   @default("DISCOVERED")
+  configVersion   Int      @default(1)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ExportBatch {
+  id              String   @id @default(cuid())
+  externalBatchId String   @unique
+  status          String
+  configVersion   Int
+  createdAt       DateTime @default(now())
+}
+
+model PipelineTelemetry {
+  id            String   @id @default(cuid())
+  stage         String
+  status        String
+  detail        String?
+  candidateId   String?
+  configVersion Int
+  createdAt     DateTime @default(now())
+}
+
+model PipelineConfig {
+  id         String   @id @default(cuid())
+  version    Int      @unique
+  isActive   Boolean  @default(false)
+  payload    Json
+  createdAt  DateTime @default(now())
+}
