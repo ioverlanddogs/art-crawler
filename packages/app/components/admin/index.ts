@@ -1,4 +1,5 @@
 export * from './ActionButton';
+export * from './AlertBanner';
 export * from './AdminShell';
 export * from './DataTable';
 export * from './EmptyState';

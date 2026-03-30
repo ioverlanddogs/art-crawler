@@ -2,6 +2,7 @@ export type AdminNavItem = {
   href: string;
   label: string;
   badgeCount?: number;
+  roles?: string[];
 };
 
 export type AdminNavGroup = {

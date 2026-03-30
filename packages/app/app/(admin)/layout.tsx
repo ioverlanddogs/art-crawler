@@ -14,23 +14,24 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     {
       label: 'Operations',
       items: [
-        { href: '/dashboard', label: 'Dashboard' },
-        { href: '/moderation', label: 'Moderation Queue', badgeCount: pendingCount },
-        { href: '/pipeline', label: 'Pipeline' }
+        { href: '/dashboard', label: 'Dashboard', roles: ['ADMIN', 'ANALYST', 'REVIEWER'] },
+        { href: '/moderation', label: 'Moderation Queue', badgeCount: pendingCount, roles: ['ADMIN', 'REVIEWER'] },
+        { href: '/pipeline', label: 'Pipeline', roles: ['ADMIN', 'ANALYST'] }
       ]
     },
     {
-      label: 'Data',
+      label: 'Investigations',
       items: [
-        { href: '/data', label: 'Data Quality' },
-        { href: '/discovery', label: 'Discovery' }
+        { href: '/investigations', label: 'Case Workspace', roles: ['ADMIN', 'ANALYST', 'REVIEWER'] },
+        { href: '/data', label: 'Data Quality', roles: ['ADMIN', 'ANALYST'] },
+        { href: '/discovery', label: 'Discovery', roles: ['ADMIN', 'ANALYST'] }
       ]
     },
     {
       label: 'Configuration',
       items: [
-        { href: '/config', label: 'Config Versions' },
-        { href: '/system', label: 'System Health' }
+        { href: '/config', label: 'Config & Models', roles: ['ADMIN', 'ANALYST'] },
+        { href: '/system', label: 'System Health', roles: ['ADMIN', 'ANALYST'] }
       ]
     }
   ];

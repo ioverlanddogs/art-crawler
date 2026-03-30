@@ -14,6 +14,13 @@ function pageTitleFromPath(pathname: string, navGroups: AdminNavGroup[]): string
   return 'Admin';
 }
 
+function roleLabel(role?: string | null) {
+  if (role === 'ADMIN') return 'Administrator';
+  if (role === 'ANALYST') return 'Operator';
+  if (role === 'REVIEWER') return 'Moderator';
+  return 'Unscoped';
+}
+
 export function AdminShell({
   navGroups,
   user,
@@ -24,13 +31,20 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
-  const pageTitle = pageTitleFromPath(pathname, navGroups);
+  const scopedNavGroups = navGroups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.roles?.length || item.roles.includes(user?.role || ''))
+    }))
+    .filter((group) => group.items.length > 0);
+  const pageTitle = pageTitleFromPath(pathname, scopedNavGroups);
 
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
         <div className="brand">Artio Admin</div>
-        {navGroups.map((group) => (
+        <div className="role-chip">{roleLabel(user?.role)}</div>
+        {scopedNavGroups.map((group) => (
           <div key={group.label} className="nav-group">
             <p className="nav-group-label">{group.label}</p>
             <nav>
