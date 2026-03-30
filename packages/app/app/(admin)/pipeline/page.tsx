@@ -1,11 +1,17 @@
-import { DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
+import { AlertBanner, DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
 import { prisma } from '@/lib/db';
 
 export default async function PipelinePage() {
-  const [batches, failures, telemetry] = await Promise.all([
+  const [batches, failures, telemetry, failureByStage] = await Promise.all([
     prisma.importBatch.findMany({ orderBy: { createdAt: 'desc' }, take: 10 }),
     prisma.pipelineTelemetry.findMany({ where: { status: 'failure' }, orderBy: { createdAt: 'desc' }, take: 8 }),
-    prisma.pipelineTelemetry.groupBy({ by: ['status'], _count: { status: true }, where: { createdAt: { gte: inLast24Hours() } } })
+    prisma.pipelineTelemetry.groupBy({ by: ['status'], _count: { status: true }, where: { createdAt: { gte: inLast24Hours() } } }),
+    prisma.pipelineTelemetry.groupBy({
+      by: ['stage'],
+      _count: { stage: true },
+      where: { status: 'failure', createdAt: { gte: inLast24Hours() } },
+      orderBy: { _count: { stage: 'desc' } }
+    })
   ]);
 
   const success = telemetry.find((x) => x.status === 'success')?._count.status ?? 0;
@@ -15,6 +21,11 @@ export default async function PipelinePage() {
   return (
     <div className="stack">
       <PageHeader title="Pipeline" description="Monitor import batches, stage health, and recent failure events." />
+      {failed > 0 ? (
+        <AlertBanner tone="danger" title="Pipeline failure state active">
+          {failed} stage failures were recorded in the past 24 hours. Pause risky config/model changes until investigation is complete.
+        </AlertBanner>
+      ) : null}
 
       <div className="stats-grid">
         <StatCard label="Successful Stages (24h)" value={success} />
@@ -50,6 +61,18 @@ export default async function PipelinePage() {
             { key: 'detail', header: 'Detail', render: (row) => row.detail || '—' },
             { key: 'configVersion', header: 'Config', render: (row) => row.configVersion },
             { key: 'createdAt', header: 'When', render: (row) => new Date(row.createdAt).toLocaleString() }
+          ]}
+        />
+      </SectionCard>
+
+      <SectionCard title="Failure Hotspots" subtitle="Ranked stages by failure count in the last 24 hours.">
+        <DataTable
+          rows={failureByStage}
+          rowKey={(row) => row.stage}
+          emptyState={<EmptyState title="No hotspots" description="No stage failures in the selected time window." />}
+          columns={[
+            { key: 'stage', header: 'Stage', render: (row) => row.stage },
+            { key: 'count', header: 'Failures', render: (row) => row._count.stage }
           ]}
         />
       </SectionCard>

@@ -4,7 +4,10 @@ import { listModerationCandidates } from '@/lib/pipeline/import-service';
 import { ModerationClient } from './ModerationClient';
 
 export default async function ModerationPage() {
-  const items = await listModerationCandidates(prisma);
+  const [items, failures] = await Promise.all([
+    listModerationCandidates(prisma),
+    prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: inLast24Hours() } } })
+  ]);
 
   return (
     <div className="stack">
@@ -12,7 +15,11 @@ export default async function ModerationPage() {
         title="Moderation Queue"
         description="Review imported candidates and decide whether each candidate should advance."
       />
-      <ModerationClient initialItems={items} />
+      <ModerationClient initialItems={items} failureCount={failures} />
     </div>
   );
+}
+
+function inLast24Hours() {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000);
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ActionButton, DataTable, EmptyState, SectionCard, StatusBadge } from '@/components/admin';
+import { ActionButton, AlertBanner, DataTable, EmptyState, SectionCard, StatusBadge } from '@/components/admin';
 
 type Candidate = {
   id: string;
@@ -13,7 +13,7 @@ type Candidate = {
   createdAt: string;
 };
 
-export function ModerationClient({ initialItems }: { initialItems: Candidate[] }) {
+export function ModerationClient({ initialItems, failureCount }: { initialItems: Candidate[]; failureCount: number }) {
   const [items, setItems] = useState(initialItems);
   const [query, setQuery] = useState('');
   const [platformFilter, setPlatformFilter] = useState('all');
@@ -23,11 +23,13 @@ export function ModerationClient({ initialItems }: { initialItems: Candidate[] }
   const [success, setSuccess] = useState<string | null>(null);
 
   const visibleItems = useMemo(() => {
-    return items.filter((item) => {
+    return items
+      .filter((item) => {
       const matchesQuery = item.title.toLowerCase().includes(query.toLowerCase()) || item.sourceUrl.includes(query);
       const matchesPlatform = platformFilter === 'all' || item.sourcePlatform === platformFilter;
       return matchesQuery && matchesPlatform;
-    });
+      })
+      .sort((a, b) => b.confidenceScore - a.confidenceScore);
   }, [items, platformFilter, query]);
 
   const selected = visibleItems.find((item) => item.id === selectedId) ?? null;
@@ -51,7 +53,13 @@ export function ModerationClient({ initialItems }: { initialItems: Candidate[] }
   }
 
   return (
-    <div className="two-col">
+    <div className="stack">
+      {failureCount > 0 ? (
+        <AlertBanner tone="warning" title="Pipeline degraded">
+          {failureCount} failed stage executions were recorded in the past 24 hours. Prefer strict review and use the investigation workspace.
+        </AlertBanner>
+      ) : null}
+      <div className="two-col">
       <SectionCard title="Moderation Queue" subtitle="Approve or reject pending candidates from mining imports.">
         <div className="filters-row">
           <input className="input" placeholder="Search title or URL" value={query} onChange={(e) => setQuery(e.target.value)} />
@@ -84,6 +92,7 @@ export function ModerationClient({ initialItems }: { initialItems: Candidate[] }
             },
             { key: 'platform', header: 'Platform', render: (row) => row.sourcePlatform },
             { key: 'score', header: 'Confidence', render: (row) => `${Math.round(row.confidenceScore * 100)}%` },
+            { key: 'created', header: 'Received', render: (row) => new Date(row.createdAt).toLocaleString() },
             {
               key: 'actions',
               header: 'Actions',
@@ -129,9 +138,14 @@ export function ModerationClient({ initialItems }: { initialItems: Candidate[] }
               <p className="muted">Status</p>
               <StatusBadge tone="warning">{selected.status}</StatusBadge>
             </div>
+            <div>
+              <p className="muted">Received</p>
+              <p>{new Date(selected.createdAt).toLocaleString()}</p>
+            </div>
           </div>
         )}
       </SectionCard>
+      </div>
     </div>
   );
 }

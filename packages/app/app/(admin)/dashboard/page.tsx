@@ -1,17 +1,20 @@
-import { DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
+import { AlertBanner, DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
 import { prisma } from '@/lib/db';
 
 export default async function DashboardPage() {
-  const [pendingCount, approvedToday, rejectedToday, batchesToday, recentCandidates, queueAttention] = await Promise.all([
+  const [pendingCount, approvedToday, rejectedToday, batchesToday, recentCandidates, queueAttention, recentFailures] = await Promise.all([
     prisma.candidate.count({ where: { status: 'PENDING' } }),
     prisma.candidate.count({ where: { status: 'APPROVED', updatedAt: { gte: startOfDayUtc() } } }),
     prisma.candidate.count({ where: { status: 'REJECTED', updatedAt: { gte: startOfDayUtc() } } }),
     prisma.importBatch.count({ where: { createdAt: { gte: startOfDayUtc() } } }),
     prisma.candidate.findMany({ orderBy: { createdAt: 'desc' }, take: 8 }),
-    prisma.pipelineTelemetry.groupBy({ by: ['status'], _count: { status: true }, where: { createdAt: { gte: startOfDayUtc() } } })
+    prisma.pipelineTelemetry.groupBy({ by: ['status'], _count: { status: true }, where: { createdAt: { gte: startOfDayUtc() } } }),
+    prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: inLast24Hours() } } })
   ]);
 
   const attentionRows = queueAttention.map((row) => ({ id: row.status, status: row.status, count: row._count.status }));
+  const throughput = approvedToday + rejectedToday;
+  const backlogPressure = pendingCount > 25 ? 'High' : pendingCount > 10 ? 'Medium' : 'Low';
 
   return (
     <div className="stack">
@@ -23,6 +26,17 @@ export default async function DashboardPage() {
         <StatCard label="Rejected Today" value={rejectedToday} detail="Moderation rejections in last 24h" />
         <StatCard label="Import Batches Today" value={batchesToday} detail="Batches received today" />
       </div>
+      <div className="three-col">
+        <StatCard label="Moderation Throughput (24h)" value={throughput} detail="Approvals + rejections" />
+        <StatCard label="Backlog Pressure" value={backlogPressure} detail="Queue risk indicator" />
+        <StatCard label="Pipeline Failures (24h)" value={recentFailures} detail="Stage failures requiring review" />
+      </div>
+
+      {recentFailures > 0 ? (
+        <AlertBanner tone="warning" title="Degraded pipeline state">
+          One or more stages failed in the last 24 hours. Route items with low confidence through investigations before approval.
+        </AlertBanner>
+      ) : null}
 
       <div className="two-col">
         <SectionCard title="Recent Import Activity" subtitle="Most recently received candidates.">
@@ -66,4 +80,8 @@ export default async function DashboardPage() {
 function startOfDayUtc() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+}
+
+function inLast24Hours() {
+  return new Date(Date.now() - 24 * 60 * 60 * 1000);
 }
