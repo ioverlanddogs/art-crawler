@@ -2,7 +2,17 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { AlertBanner, ConfirmDialog, SectionCard, ToastRegion, type ToastMessage } from '@/components/admin';
+import {
+  AlertBanner,
+  BulkActionPanel,
+  ConfirmDialog,
+  ExceptionQueueTable,
+  SectionCard,
+  ToastRegion,
+  type ExceptionQueueItem,
+  type ScopePreviewRow,
+  type ToastMessage
+} from '@/components/admin';
 import {
   ModerationDetailPanel,
   ModerationFilterBar,
@@ -44,7 +54,7 @@ export function ModerationClient({
 
   const [items, setItems] = useState<QueueCandidate[]>(initialItems);
   const [submittingId, setSubmittingId] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<'approve' | 'reject' | null>(null);
+  const [busyAction, setBusyAction] = useState<'approve' | 'reject' | 'bulk_approve' | 'bulk_reject' | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [confirmRejectFor, setConfirmRejectFor] = useState<string | null>(null);
   const [selectedRejectReason, setSelectedRejectReason] = useState<string>('');
@@ -52,6 +62,8 @@ export function ModerationClient({
   const [queueError, setQueueError] = useState<string | null>(null);
   const [detailData, setDetailData] = useState<CandidateDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [selectedBulkIds, setSelectedBulkIds] = useState<string[]>([]);
+  const [bulkDialog, setBulkDialog] = useState<null | 'approve' | 'reject'>(null);
 
   const filterState = readFilterState(searchParams);
 
@@ -61,6 +73,69 @@ export function ModerationClient({
   const selected = useMemo(() => items.find((item) => item.id === selectedId) ?? null, [items, selectedId]);
   const hasActiveFilters = Boolean(filterState.q || filterState.platform !== 'all' || filterState.status !== 'PENDING' || filterState.confidence !== 'all');
   const platforms = useMemo(() => Array.from(new Set(items.map((item) => item.source))).sort(), [items]);
+
+  const previewRows = useMemo<ScopePreviewRow[]>(
+    () =>
+      items
+        .filter((item) => selectedBulkIds.includes(item.id))
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          source: item.source,
+          confidenceBand: item.confidenceBand,
+          status: item.status,
+          risk:
+            item.status !== 'PENDING'
+              ? 'Status changed from pending; skip expected.'
+              : item.confidenceBand === 'LOW'
+                ? 'Low confidence: check evidence before bulk action.'
+                : item.clusterKey
+                  ? 'Possible duplicate cluster; verify idempotency.'
+                  : 'No immediate risk marker.'
+        })),
+    [items, selectedBulkIds]
+  );
+
+  const exceptionRows = useMemo<ExceptionQueueItem[]>(() => {
+    return items
+      .filter((item) => item.confidenceBand === 'LOW' || Boolean(item.clusterKey) || item.status !== 'PENDING')
+      .slice(0, 20)
+      .map((item) => {
+        const escalationType: ExceptionQueueItem['escalationType'] =
+          item.status !== 'PENDING'
+            ? 'conflict'
+            : item.confidenceBand === 'LOW'
+              ? 'low_confidence'
+              : item.clusterKey
+                ? 'policy_miss'
+                : 'unknown';
+
+        const reason =
+          escalationType === 'conflict'
+            ? 'Status indicates this item may have already been actioned.'
+            : escalationType === 'low_confidence'
+              ? 'Low confidence candidate requires human review.'
+              : escalationType === 'policy_miss'
+                ? 'Candidate has duplicate cluster marker; check policy match and dedup safety.'
+                : 'Escalation reason is incomplete.';
+
+        return {
+          id: item.id,
+          title: item.title,
+          reason,
+          escalationType,
+          confidenceBand: item.confidenceBand,
+          nextAction: 'Open detail, then approve/reject or hold for investigation.'
+        };
+      });
+  }, [items]);
+
+  const blockingReason = useMemo(() => {
+    if (!selectedBulkIds.length) return 'Select at least one candidate to run a bulk action.';
+    const hasNonPending = items.some((item) => selectedBulkIds.includes(item.id) && item.status !== 'PENDING');
+    if (hasNonPending) return 'One or more selected candidates are no longer pending. Refresh selection to avoid idempotency conflicts.';
+    return null;
+  }, [items, selectedBulkIds]);
 
   useEffect(() => {
     let ignore = false;
@@ -80,6 +155,7 @@ export function ModerationClient({
         const payload = (await res.json()) as { data: QueueCandidate[] };
         if (ignore) return;
         setItems(payload.data);
+        setSelectedBulkIds((prev) => prev.filter((id) => payload.data.some((item) => item.id === id)));
         setQueueError(null);
       } catch (error) {
         if (ignore) return;
@@ -232,7 +308,7 @@ export function ModerationClient({
         body: JSON.stringify(payload)
       });
 
-      const body = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+      const body = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         if (res.status === 409) {
           pushToast({ tone: 'error', title: 'Status conflict detected.', description: body.error ?? 'Candidate changed status.' });
@@ -243,6 +319,7 @@ export function ModerationClient({
 
       const remaining = items.filter((item) => item.id !== id);
       setItems(remaining);
+      setSelectedBulkIds((prev) => prev.filter((candidateId) => candidateId !== id));
       const next = remaining[currentIndex] ?? remaining[Math.max(0, currentIndex - 1)] ?? null;
       syncUrl({ selected: next?.id ?? null, detail: next ? (detailOpen ? 'open' : null) : null });
       setSelectedRejectReason('');
@@ -258,6 +335,37 @@ export function ModerationClient({
       setSubmittingId(null);
       setBusyAction(null);
       setConfirmRejectFor(null);
+    }
+  }
+
+  async function runBulk(action: 'approve' | 'reject') {
+    setBusyAction(action === 'approve' ? 'bulk_approve' : 'bulk_reject');
+    try {
+      const endpoint = action === 'approve' ? '/api/admin/moderation/events/bulk-approve' : '/api/admin/moderation/events/bulk-reject';
+      const payload = action === 'approve' ? { ids: selectedBulkIds } : { ids: selectedBulkIds, reason: selectedRejectReason || rejectNote || 'Bulk rejection' };
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const body = (await res.json()) as { data?: { succeeded: string[]; failed: string[] }; error?: string };
+      if (!res.ok) {
+        throw new Error(body.error ?? `Bulk ${action} failed with status ${res.status}`);
+      }
+      const succeeded = body.data?.succeeded ?? [];
+      const failed = body.data?.failed ?? [];
+      setItems((prev) => prev.filter((item) => !succeeded.includes(item.id)));
+      setSelectedBulkIds(failed);
+      pushToast({
+        tone: failed.length ? 'info' : 'success',
+        title: `Bulk ${action} completed`,
+        description: `Succeeded: ${succeeded.length}, failed: ${failed.length}`
+      });
+    } catch (error) {
+      pushToast({ tone: 'error', title: `Bulk ${action} failed`, description: error instanceof Error ? error.message : 'Unknown error' });
+    } finally {
+      setBusyAction(null);
+      setBulkDialog(null);
     }
   }
 
@@ -295,9 +403,16 @@ export function ModerationClient({
             hasAnyItems={!hasActiveFilters}
             queueError={queueError}
             selectedId={selectedId}
+            selectedIds={selectedBulkIds}
             submittingId={submittingId}
             busyAction={busyAction}
             onSelect={(id) => syncUrl({ selected: id })}
+            onToggleSelected={(id) => setSelectedBulkIds((prev) => (prev.includes(id) ? prev.filter((value) => value !== id) : [...prev, id]))}
+            onToggleAll={() =>
+              setSelectedBulkIds((prev) =>
+                prev.length === items.length ? [] : items.map((item) => item.id)
+              )
+            }
             onApprove={(id) => void moderate(id, 'approve')}
             onReject={(id) => setConfirmRejectFor(id)}
           />
@@ -305,6 +420,27 @@ export function ModerationClient({
 
         <SectionCard title="Candidate Detail" subtitle="Deep context for safer decisions and quick investigation handoff.">
           <ModerationDetailPanel selected={selected} detailOpen={detailOpen} detail={detailData} detailLoading={detailLoading} />
+        </SectionCard>
+      </div>
+
+      <div className="two-col">
+        <SectionCard title="Bulk workflow" subtitle="Preview action scope, risk notes, and destructive confirmation before execution.">
+          <BulkActionPanel
+            selectedCount={selectedBulkIds.length}
+            previewRows={previewRows}
+            blockingReason={blockingReason}
+            unsupportedReplay
+            onApprove={() => setBulkDialog('approve')}
+            onReject={() => setBulkDialog('reject')}
+            onReplay={() => pushToast({ tone: 'info', title: 'Replay is not supported in moderation APIs.', description: 'Use recovery/replay tools if available.' })}
+          />
+        </SectionCard>
+
+        <SectionCard title="Exception + escalation queue" subtitle="Why candidates were escalated and what the human override path should be.">
+          <ExceptionQueueTable rows={exceptionRows} onSelect={(id) => syncUrl({ selected: id, detail: 'open' })} />
+          <AlertBanner tone="info" title="Return to automation state">
+            Return-to-automation is supported by completing a human decision (approve/reject). Dedicated routing state APIs are not currently exposed.
+          </AlertBanner>
         </SectionCard>
       </div>
 
@@ -346,6 +482,37 @@ export function ModerationClient({
             placeholder="Ticket, evidence, or additional context."
           />
         </label>
+      </ConfirmDialog>
+
+      <ConfirmDialog
+        open={bulkDialog !== null}
+        title={bulkDialog === 'reject' ? 'Bulk reject selected candidates?' : 'Bulk approve selected candidates?'}
+        body={
+          bulkDialog === 'reject'
+            ? `You are about to reject ${selectedBulkIds.length} candidates. This is destructive and should include a policy reason.`
+            : `You are about to approve ${selectedBulkIds.length} candidates.`
+        }
+        tone={bulkDialog === 'reject' ? 'danger' : 'default'}
+        reasonRequired={bulkDialog === 'reject'}
+        confirmToken={bulkDialog === 'reject' ? 'BULK-REJECT' : undefined}
+        confirmLabel={bulkDialog === 'reject' ? 'Reject selected' : 'Approve selected'}
+        submitting={busyAction === 'bulk_approve' || busyAction === 'bulk_reject'}
+        onCancel={() => setBulkDialog(null)}
+        onConfirm={({ reason }) => {
+          if (blockingReason) {
+            pushToast({ tone: 'error', title: blockingReason });
+            return;
+          }
+          if (bulkDialog === 'reject' && reason) {
+            setSelectedRejectReason(reason);
+          }
+          if (!bulkDialog) return;
+          void runBulk(bulkDialog);
+        }}
+      >
+        <AlertBanner tone="warning" title="Scope preview">
+          {selectedBulkIds.length} selected candidate(s) will be affected. Conflicts are skipped server-side and returned as failures.
+        </AlertBanner>
       </ConfirmDialog>
     </div>
   );

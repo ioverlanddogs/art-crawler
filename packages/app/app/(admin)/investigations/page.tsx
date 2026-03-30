@@ -1,4 +1,13 @@
-import { AlertBanner, InvestigationSearch, InvestigationSummary, InvestigationTimeline, PageHeader, SectionCard } from '@/components/admin';
+import {
+  AlertBanner,
+  ExceptionQueueTable,
+  ExplainabilityPanel,
+  InvestigationSearch,
+  InvestigationSummary,
+  InvestigationTimeline,
+  PageHeader,
+  SectionCard
+} from '@/components/admin';
 import { prisma } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -75,6 +84,24 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
   const rejectionCount = candidate?.status === 'REJECTED' ? 1 : 0;
   const hasFilters = Object.values(filters).some(Boolean);
 
+  const exceptionItems = linkedTelemetry
+    .filter((row) => row.status === 'failure' || (row.detail ?? '').toLowerCase().includes('conflict'))
+    .slice(0, 15)
+    .map((row) => ({
+      id: row.id,
+      title: row.stage,
+      reason: row.detail ?? 'No escalation detail captured',
+      escalationType: (row.status === 'failure' ? 'unsupported_case' : 'conflict') as
+        | 'policy_miss'
+        | 'low_confidence'
+        | 'conflict'
+        | 'unsupported_case'
+        | 'unknown',
+      confidenceBand: candidate?.confidenceBand ?? 'unknown',
+      nextAction: 'Review timeline entry and handoff to moderation with explicit override reason.'
+    }));
+
+
   return (
     <div className="stack">
       <PageHeader
@@ -129,6 +156,30 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
       <SectionCard title="Lifecycle timeline" subtitle="Keyboard navigable event history with explicit missing-data labels.">
         <InvestigationTimeline events={timeline} />
       </SectionCard>
+
+      <div className="two-col">
+        <SectionCard title="Exception routing" subtitle="Escalated failures and conflicts requiring operator decision.">
+          <ExceptionQueueTable rows={exceptionItems} onSelect={() => undefined} />
+          <AlertBanner tone="info" title="Policy miss visibility">
+            This queue is derived from failure/conflict telemetry only. If rule-level miss reasons are absent, entries are labeled with partial context.
+          </AlertBanner>
+        </SectionCard>
+
+        <SectionCard title="Escalation explainability" subtitle="Plain-language trust cues for escalation boundaries.">
+          <ExplainabilityPanel
+            title="Why work was escalated"
+            summary="Escalation is triggered by failures, conflicts, or missing lifecycle telemetry in this trace window."
+            matchedCriteria={[
+              `${failureCount} failure event(s) in current trace`,
+              `${timeline.filter((item) => item.missing).length} missing lifecycle stage(s)`,
+              `${linkedTelemetry.filter((row) => (row.detail ?? '').toLowerCase().includes('conflict')).length} conflict marker(s)`
+            ]}
+            thresholdContext="Confidence thresholds may not be present in investigation telemetry. Missing thresholds are treated as partial context."
+            boundaryCopy="When escalation reason is incomplete, human review is mandatory before returning the case to normal automation flow."
+          />
+        </SectionCard>
+      </div>
+
     </div>
   );
 }
