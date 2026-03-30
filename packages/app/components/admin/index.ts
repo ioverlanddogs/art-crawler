@@ -7,9 +7,15 @@ export * from './DataTable';
 export * from './EmptyState';
 export * from './PageHeader';
 export * from './SectionCard';
+export * from './SeverityBadge';
+export * from './FailureHotspotList';
+export * from './MetricCard';
 export * from './StatCard';
 export * from './StatusBadge';
 export * from './Toast';
+export * from './InvestigationSearch';
+export * from './InvestigationSummary';
+export * from './InvestigationTimeline';
 export * from './types';
 
 export * from './moderation';

@@ -103,7 +103,7 @@ export function ModerationDetailPanel({
           className="inline-link"
           href={`/investigations?candidateId=${encodeURIComponent(selected.id)}&importBatchId=${encodeURIComponent(
             selected.importBatchId ?? ''
-          )}&source=${encodeURIComponent(selected.source)}`}
+          )}&sourceUrl=${encodeURIComponent(selected.sourceUrl ?? '')}`}
         >
           Open in Investigations
         </Link>
