@@ -1,14 +1,10 @@
 import { prisma } from '@/lib/db';
+import { isPipelineImportAuthorized } from '@/lib/pipeline/import-auth';
 import { err } from '@/lib/api/response';
 import { processImportBatch, importSchema } from '@/lib/pipeline/import-service';
 
-function isAuthorized(req: Request): boolean {
-  const auth = req.headers.get('authorization');
-  return auth === `Bearer ${process.env.MINING_SERVICE_SECRET}`;
-}
-
 export async function POST(req: Request) {
-  if (!isAuthorized(req)) return err('Unauthorized', 'UNAUTHORIZED', 401);
+  if (!isPipelineImportAuthorized(req)) return err('Unauthorized', 'UNAUTHORIZED', 401);
 
   // NOTE: Intentionally no per-instance in-memory rate limiter.
   // In-memory limits are misleading in multi-instance/serverless deployments because they

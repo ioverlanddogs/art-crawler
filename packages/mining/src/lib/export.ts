@@ -43,7 +43,7 @@ export function buildExportPayload(candidate: {
 }
 
 export async function sendImportBatch(payload: unknown) {
-  const secret = process.env.MINING_SERVICE_SECRET ?? process.env.MINING_IMPORT_SECRET;
+  const secret = process.env.MINING_IMPORT_SECRET ?? process.env.MINING_SERVICE_SECRET;
   const res = await fetch(process.env.PIPELINE_IMPORT_URL!, {
     method: 'POST',
     headers: {

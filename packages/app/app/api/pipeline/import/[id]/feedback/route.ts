@@ -1,13 +1,9 @@
 import { prisma } from '@/lib/db';
+import { isPipelineImportAuthorized } from '@/lib/pipeline/import-auth';
 import { err, notFound, ok } from '@/lib/api/response';
 
-function isAuthorized(req: Request): boolean {
-  const auth = req.headers.get('authorization');
-  return auth === `Bearer ${process.env.MINING_SERVICE_SECRET}`;
-}
-
 export async function POST(req: Request, { params }: { params: { id: string } }) {
-  if (!isAuthorized(req)) return err('Unauthorized', 'UNAUTHORIZED', 401);
+  if (!isPipelineImportAuthorized(req)) return err('Unauthorized', 'UNAUTHORIZED', 401);
 
   const batch = await prisma.importBatch.findUnique({ where: { id: params.id } });
   if (!batch) return notFound('Import batch');
