@@ -42,6 +42,16 @@ type StageMetric = {
   health: 'healthy' | 'degraded' | 'failing' | 'unknown';
 };
 
+type TelemetryRow = Awaited<ReturnType<typeof prisma.pipelineTelemetry.findMany>>[number];
+type ImportBatchRow = Awaited<ReturnType<typeof prisma.importBatch.findMany>>[number];
+type RecoveryAuditEvent = {
+  id: string;
+  stage: string;
+  status: string;
+  detail: string | null;
+  createdAt: string;
+};
+
 export default async function PipelinePage() {
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -76,11 +86,11 @@ export default async function PipelinePage() {
     prisma.pipelineTelemetry.findMany({ where: { stage: { in: [...RECOVERY_AUDIT_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 120 })
   ]);
 
-  const recentTelemetry = settledValue(recentTelemetryResult);
-  const recentFailures = settledValue(recentFailuresResult);
-  const recentImportExportFailures = settledValue(recentImportExportFailuresResult);
-  const failedBatches = settledValue(failedBatchesResult);
-  const recoveryAuditEvents = settledValue(recoveryAuditResult).map((row) => ({
+  const recentTelemetry = settledValue<TelemetryRow[]>(recentTelemetryResult, []);
+  const recentFailures = settledValue<TelemetryRow[]>(recentFailuresResult, []);
+  const recentImportExportFailures = settledValue<TelemetryRow[]>(recentImportExportFailuresResult, []);
+  const failedBatches = settledValue<ImportBatchRow[]>(failedBatchesResult, []);
+  const recoveryAuditEvents = settledValue<TelemetryRow[]>(recoveryAuditResult, []).map((row): RecoveryAuditEvent => ({
     id: row.id,
     stage: row.stage,
     status: row.status,
@@ -96,21 +106,21 @@ export default async function PipelinePage() {
   const drainMode = drainFlagResult.status === 'fulfilled' ? drainFlagResult.value?.value === 'true' : null;
 
   const stageMetrics = PIPELINE_STAGES.map((stage): StageMetric => {
-    const rows = recentTelemetry.filter((row) => row.stage === stage);
-    const successCount = rows.filter((row) => row.status === 'success').length;
-    const failureCount = rows.filter((row) => row.status === 'failure').length;
+    const rows = recentTelemetry.filter((row: TelemetryRow) => row.stage === stage);
+    const successCount = rows.filter((row: TelemetryRow) => row.status === 'success').length;
+    const failureCount = rows.filter((row: TelemetryRow) => row.status === 'failure').length;
     const throughput = successCount + failureCount;
     const failureRate = throughput ? failureCount / throughput : 0;
-    const avgLatencyMs = rows.filter((row) => typeof row.durationMs === 'number').length
+    const avgLatencyMs = rows.filter((row: TelemetryRow) => typeof row.durationMs === 'number').length
       ? Math.round(
           rows
-            .filter((row): row is typeof row & { durationMs: number } => typeof row.durationMs === 'number')
-            .reduce((acc, row) => acc + row.durationMs, 0) / rows.filter((row) => typeof row.durationMs === 'number').length
+            .filter((row): row is TelemetryRow & { durationMs: number } => typeof row.durationMs === 'number')
+            .reduce((acc: number, row) => acc + row.durationMs, 0) / rows.filter((row: TelemetryRow) => typeof row.durationMs === 'number').length
         )
       : null;
     const queueDepth = findLatestNumber(rows, 'queueDepth');
-    const retries = rows.reduce((acc, row) => acc + (findNumberValue(row.metadata, 'retryCount') ?? 0), 0);
-    const lastSuccessAt = rows.find((row) => row.status === 'success')?.createdAt ?? null;
+    const retries = rows.reduce((acc: number, row: TelemetryRow) => acc + (findNumberValue(row.metadata, 'retryCount') ?? 0), 0);
+    const lastSuccessAt = rows.find((row: TelemetryRow) => row.status === 'success')?.createdAt ?? null;
 
     const health: StageMetric['health'] =
       rows.length === 0
@@ -156,7 +166,7 @@ export default async function PipelinePage() {
     recentFailures: recentImportExportFailures.length
   });
 
-  const replayEligibleRows = failedBatches.map((batch) => ({
+  const replayEligibleRows = failedBatches.map((batch: ImportBatchRow) => ({
     id: batch.id,
     label: `Batch ${batch.externalBatchId}`,
     failureReason: batch.errorCount > 0 ? `${batch.errorCount} errors captured` : `Status: ${batch.status}`,
@@ -212,7 +222,7 @@ export default async function PipelinePage() {
       <div className="two-col">
         <SectionCard title="Recent failed work" subtitle="Most recent failures with links for root-cause analysis.">
           <ul className="timeline" aria-label="Recent failed work list">
-            {recentImportExportFailures.map((row) => (
+            {recentImportExportFailures.map((row: TelemetryRow) => (
               <li key={row.id}>
                 <p>
                   <strong>{row.stage}</strong> <StatusBadge tone="danger">Failure</StatusBadge>
@@ -291,7 +301,7 @@ function deriveRecoveryState({
   drainMode: boolean | null;
   failingCount: number;
   degradedCount: number;
-  replayingSignal: { createdAt: string } | undefined;
+  replayingSignal: RecoveryAuditEvent | undefined;
   telemetryLimited: boolean;
   recentFailures: number;
 }) {
@@ -313,7 +323,7 @@ function inferErrorCategory(detail?: string | null) {
   return 'other';
 }
 
-function findLatestNumber(rows: Array<{ metadata: unknown }>, key: string): number | null {
+function findLatestNumber(rows: TelemetryRow[], key: string): number | null {
   for (const row of rows) {
     const value = findNumberValue(row.metadata, key);
     if (typeof value === 'number') return value;
@@ -333,8 +343,8 @@ function findStringValue(metadata: unknown, key: string): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-function settledValue<T>(result: PromiseSettledResult<T>): T {
-  return result.status === 'fulfilled' ? result.value : ([] as unknown as T);
+function settledValue<T>(result: PromiseSettledResult<T>, fallback: T): T {
+  return result.status === 'fulfilled' ? result.value : fallback;
 }
 
 function inLast24Hours() {

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authFailure } from '@/lib/api/response';
 import { requireRole } from '@/lib/auth-guard';
@@ -21,7 +22,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
   }
   const { reason } = schema.parse(await request.json());
   const activeConfig = await prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { version: 'desc' } });
-  const promoted = await prisma.$transaction(async (tx) => {
+  const promoted = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.modelVersion.updateMany({ where: { status: 'ACTIVE' }, data: { status: 'ARCHIVED' } });
     const activeModel = await tx.modelVersion.update({
       where: { id: params.id },

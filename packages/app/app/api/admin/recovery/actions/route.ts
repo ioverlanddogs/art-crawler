@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authFailure } from '@/lib/api/response';
 import { prisma } from '@/lib/db';
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   let outcome = 'success';
   let note = '';
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     if (payload.action === 'pause_imports' || payload.action === 'resume_imports') {
       await tx.siteSetting.upsert({
         where: { key: 'mining_import_enabled' },

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, err, ok } from '@/lib/api/response';
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
   const succeeded: string[] = [];
   const failed: string[] = [];
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     for (const id of parsed.data.ids) {
       const existing = await tx.ingestExtractedEvent.findUnique({ where: { id } });
       if (!existing) {
