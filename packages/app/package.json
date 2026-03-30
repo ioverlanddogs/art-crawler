@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
-    "prisma:push": "DATABASE_URL_DIRECT=${DATABASE_URL_DIRECT:-$DATABASE_URL} prisma db push"
+    "prisma:push": "DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required for @artio/app prisma:push} DATABASE_URL_DIRECT=${DATABASE_URL_DIRECT:-$DATABASE_URL} prisma db push"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
