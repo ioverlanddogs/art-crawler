@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import { err, ok } from '@/lib/api/response';
+import { err } from '@/lib/api/response';
 import { processImportBatch, importSchema } from '@/lib/pipeline/import-service';
 
 function isAuthorized(req: Request): boolean {
@@ -25,5 +25,5 @@ export async function POST(req: Request) {
   }
 
   const result = await processImportBatch(prisma, parsed.data);
-  return ok(result);
+  return Response.json(result);
 }

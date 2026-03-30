@@ -3,8 +3,9 @@ import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
 
 if (process.env.NODE_ENV !== 'test') {
-  const required = ['PIPELINE_IMPORT_URL', 'MINING_IMPORT_SECRET', 'MINING_DATABASE_URL', 'REDIS_URL'];
+  const required = ['PIPELINE_IMPORT_URL', 'MINING_DATABASE_URL', 'REDIS_URL'];
   const missing = required.filter((k) => !process.env[k]);
+  if (!process.env.MINING_SERVICE_SECRET && !process.env.MINING_IMPORT_SECRET) missing.push('MINING_SERVICE_SECRET');
   if (missing.length) {
     console.error(`[mining] missing required env vars: ${missing.join(', ')}`);
     process.exit(1);
