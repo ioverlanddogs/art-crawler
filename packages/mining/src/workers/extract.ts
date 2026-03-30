@@ -13,6 +13,10 @@ export const mockAiExtractor: AiExtractor = {
   }
 };
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
 function extractJsonLd(html: string): Record<string, unknown> | null {
   const scripts = [...html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)];
   for (const script of scripts) {
@@ -54,9 +58,10 @@ export async function runExtract(candidateId: string, ai: AiExtractor = mockAiEx
   const sourceTypeExtract = !jsonLd ? parseBySourceType(candidate.entityType ?? candidate.source?.sourceType ?? 'generic', html) : null;
   const genericExtract = !jsonLd && !sourceTypeExtract ? await ai.extract(html) : null;
   const extracted = jsonLd ?? sourceTypeExtract ?? genericExtract ?? {};
+  const extractedRecord = asRecord(extracted);
   const parserType = jsonLd ? 'json_ld' : sourceTypeExtract ? 'source_type' : 'generic_fallback';
 
-  const hasExtractedCoreFields = Boolean((extracted as any).name ?? (extracted as any).title);
+  const hasExtractedCoreFields = Boolean(extractedRecord.name ?? extractedRecord.title);
   if (candidate.sourceId) {
     if (hasExtractedCoreFields) {
       await markSourceSuccess(candidate.sourceId);

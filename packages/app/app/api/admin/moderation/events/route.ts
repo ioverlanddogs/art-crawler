@@ -12,8 +12,8 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const { page, pageSize, skip, take } = parsePagination(url.searchParams);
-  const band = url.searchParams.get('band') as any;
-  const status = url.searchParams.get('status') as any;
+  const band = url.searchParams.get('band') ?? undefined;
+  const status = url.searchParams.get('status') ?? undefined;
   const source = url.searchParams.get('source') ?? undefined;
   const region = url.searchParams.get('region') ?? undefined;
   const venueId = url.searchParams.get('venueId') ?? undefined;

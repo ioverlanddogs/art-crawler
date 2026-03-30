@@ -8,6 +8,10 @@ const responseSchema = z.object({
   importBatchId: z.string().nullable()
 });
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+}
+
 export function buildExportPayload(candidate: {
   sourceUrl: string;
   fingerprint: string | null;
@@ -16,7 +20,7 @@ export function buildExportPayload(candidate: {
   region?: string | null;
   normalizedJson: unknown;
 }) {
-  const normalized = (candidate.normalizedJson as any) ?? {};
+  const normalized = asRecord(candidate.normalizedJson);
   const startAt = normalized.startAt ?? normalized.start_at ?? new Date().toISOString();
 
   return {

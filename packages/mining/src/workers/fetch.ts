@@ -89,8 +89,8 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
     const result = await fetchWithPolicy(normalizedSourceUrl, sourcePolicy);
     response = result.response;
     resolvedUrl = result.finalUrl;
-  } catch (error: any) {
-    const reason = String(error?.message ?? 'fetch_exception');
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : 'fetch_exception';
     await markSourceFailure(candidate.sourceId, reason.startsWith('redirect_') ? reason : `fetch_exception:${reason}`);
     await persistFetchFailure(candidateId, {
       canonicalUrl: resolvedUrl,
