@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 const baseUrl = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
-const importSecret = process.env.MINING_IMPORT_SECRET ?? process.env.MINING_SERVICE_SECRET ?? 'dev-mining-secret';
+const importSecret = process.env.MINING_IMPORT_SECRET ?? 'dev-mining-secret';
 
 test('admin auth entry, moderation queue load, approve/reject candidate', async ({ page, request }) => {
   await page.goto(`${baseUrl}/api/auth/signin`);

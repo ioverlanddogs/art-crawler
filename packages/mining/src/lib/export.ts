@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { getImportSecretFromEnv } from './env.js';
 
 const responseSchema = z.object({
   imported: z.number().int().nonnegative(),
@@ -43,8 +44,19 @@ export function buildExportPayload(candidate: {
 }
 
 export async function sendImportBatch(payload: unknown) {
-  const secret = process.env.MINING_IMPORT_SECRET ?? process.env.MINING_SERVICE_SECRET;
-  const res = await fetch(process.env.PIPELINE_IMPORT_URL!, {
+  const secret = getImportSecretFromEnv();
+  if (!secret) {
+    throw new Error(
+      '[mining] missing import auth secret: set MINING_IMPORT_SECRET (MINING_SERVICE_SECRET is deprecated fallback)'
+    );
+  }
+
+  const importUrl = process.env.PIPELINE_IMPORT_URL;
+  if (!importUrl) {
+    throw new Error('[mining] missing required env var: PIPELINE_IMPORT_URL');
+  }
+
+  const res = await fetch(importUrl, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

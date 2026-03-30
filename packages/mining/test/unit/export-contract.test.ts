@@ -77,6 +77,39 @@ describe('mining -> app import contract', () => {
     );
   });
 
+
+  test('sendImportBatch accepts legacy MINING_SERVICE_SECRET fallback', async () => {
+    process.env.PIPELINE_IMPORT_URL = 'https://app.example.test/api/pipeline/import';
+    delete process.env.MINING_IMPORT_SECRET;
+    process.env.MINING_SERVICE_SECRET = 'legacy-secret';
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      async json() {
+        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_legacy' };
+      }
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await sendImportBatch({ source: 'mining-service-v1', region: 'us', events: [] });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://app.example.test/api/pipeline/import',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          authorization: 'Bearer legacy-secret'
+        })
+      })
+    );
+  });
+
+  test('sendImportBatch fails clearly when PIPELINE_IMPORT_URL is missing', async () => {
+    process.env.MINING_IMPORT_SECRET = 'top-secret';
+
+    await expect(sendImportBatch({})).rejects.toThrow('PIPELINE_IMPORT_URL');
+  });
+
   test('sendImportBatch parses route response shape', async () => {
     process.env.PIPELINE_IMPORT_URL = 'https://app.example.test/api/pipeline/import';
     process.env.MINING_IMPORT_SECRET = 'top-secret';
