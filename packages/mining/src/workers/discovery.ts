@@ -3,6 +3,7 @@ import { loadActiveConfig } from '../lib/config.js';
 import { fetchQueue } from '../queues.js';
 import { enqueueNextStage } from '../lib/stage-chaining.js';
 import { isSourceHealthy } from '../lib/source-health.js';
+import { normalizeUrlForComparison } from '../lib/source-url-policy.js';
 
 export async function runDiscovery(enqueueNext = true) {
   const cfg = await loadActiveConfig();
@@ -27,11 +28,23 @@ export async function runDiscovery(enqueueNext = true) {
       continue;
     }
 
-    const duplicate = await prisma.miningCandidate.findFirst({
+    const seedUrl = normalizeUrlForComparison(source.seedUrl);
+    const recentCandidates = await prisma.miningCandidate.findMany({
       where: {
-        OR: [{ sourceUrl: source.seedUrl }, { canonicalUrl: source.seedUrl }],
+        sourceId: source.id,
         createdAt: { gte: recentThreshold }
+      },
+      select: {
+        id: true,
+        sourceUrl: true,
+        canonicalUrl: true
       }
+    });
+
+    const duplicate = recentCandidates.find((candidate: { id: string; sourceUrl: string; canonicalUrl: string | null }) => {
+      const sourceUrl = candidate.sourceUrl ? normalizeUrlForComparison(candidate.sourceUrl) : null;
+      const canonicalUrl = candidate.canonicalUrl ? normalizeUrlForComparison(candidate.canonicalUrl) : null;
+      return sourceUrl === seedUrl || canonicalUrl === seedUrl;
     });
 
     if (duplicate) {
@@ -49,11 +62,11 @@ export async function runDiscovery(enqueueNext = true) {
 
     const candidate = await prisma.miningCandidate.create({
       data: {
-        sourceUrl: source.seedUrl,
+        sourceUrl: seedUrl,
         sourceId: source.id,
         sourceDomain: source.domain,
-        discoveredFromUrl: source.seedUrl,
-        canonicalUrl: source.seedUrl,
+        discoveredFromUrl: seedUrl,
+        canonicalUrl: seedUrl,
         discoveryMethod: 'seeded_registry',
         entityType: source.sourceType,
         region: source.region,

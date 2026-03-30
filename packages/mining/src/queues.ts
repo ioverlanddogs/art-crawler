@@ -1,7 +1,7 @@
 import { Queue } from 'bullmq';
-import IORedis from 'ioredis';
+import { Redis } from 'ioredis';
 
-const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+const connection = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
 export const discoveryQueue = new Queue('discovery', { connection });
 export const fetchQueue = new Queue('fetch', { connection });

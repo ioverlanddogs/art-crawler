@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Worker } from 'bullmq';
-import IORedis from 'ioredis';
+import { Redis } from 'ioredis';
 
 if (process.env.NODE_ENV !== 'test') {
   const required = ['PIPELINE_IMPORT_URL', 'MINING_IMPORT_SECRET', 'MINING_DATABASE_URL', 'REDIS_URL'];
@@ -11,7 +11,7 @@ if (process.env.NODE_ENV !== 'test') {
   }
 }
 
-const workerConnection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379');
+const workerConnection = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379');
 
 function getCandidateId(jobData: unknown): string {
   const candidateId = (jobData as { candidateId?: unknown })?.candidateId;

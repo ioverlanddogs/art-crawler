@@ -3,11 +3,60 @@ import { extractQueue } from '../queues.js';
 import { enqueueNextStage } from '../lib/stage-chaining.js';
 import { createHash } from 'node:crypto';
 import { markSourceFailure, markSourceSuccess } from '../lib/source-health.js';
+import { isApprovedBySourcePolicy, normalizeUrlForComparison, type SourcePolicy } from '../lib/source-url-policy.js';
 
-function matchesPathRules(pathname: string, allowed: string[], blocked: string[]) {
-  const allowMatch = allowed.length === 0 || allowed.some((pattern) => pathname.includes(pattern));
-  const blockedMatch = blocked.some((pattern) => pathname.includes(pattern));
-  return allowMatch && !blockedMatch;
+const MAX_REDIRECTS = 5;
+
+async function persistFetchFailure(candidateId: string, payload: {
+  canonicalUrl: string;
+  fetchStatusCode?: number | null;
+  fetchContentType?: string | null;
+  lastError: string;
+}) {
+  await prisma.miningCandidate.update({
+    where: { id: candidateId },
+    data: {
+      canonicalUrl: payload.canonicalUrl,
+      fetchStatusCode: payload.fetchStatusCode ?? null,
+      fetchContentType: payload.fetchContentType ?? null,
+      fetchedAt: new Date(),
+      lastError: payload.lastError,
+      retryCount: { increment: 1 }
+    }
+  });
+}
+
+async function fetchWithPolicy(seedUrl: string, sourcePolicy: SourcePolicy) {
+  let currentUrl = normalizeUrlForComparison(seedUrl);
+
+  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+    const response = await fetch(currentUrl, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        'user-agent': 'ArtioMiningBot/1.0 (+https://artio.local/mining)'
+      }
+    });
+
+    const isRedirect = response.status >= 300 && response.status < 400;
+    if (!isRedirect) {
+      return { response, finalUrl: currentUrl };
+    }
+
+    const location = response.headers.get('location');
+    if (!location) {
+      throw new Error('redirect_missing_location');
+    }
+
+    const nextUrl = normalizeUrlForComparison(new URL(location, currentUrl).toString());
+    if (!isApprovedBySourcePolicy(nextUrl, sourcePolicy)) {
+      throw new Error('redirect_left_approved_scope');
+    }
+
+    currentUrl = nextUrl;
+  }
+
+  throw new Error('redirect_limit_exceeded');
 }
 
 export async function runFetch(candidateId: string, enqueueNext = true) {
@@ -20,45 +69,39 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
     throw new Error('Missing trusted source relation');
   }
 
-  // TODO(assumption): SSRF guard currently allows only http/https and blocks local hosts.
-  const url = new URL(candidate.sourceUrl);
-  if (!['http:', 'https:'].includes(url.protocol) || ['localhost', '127.0.0.1'].includes(url.hostname)) {
-    await markSourceFailure(candidate.sourceId, 'ssrf_blocked');
-    await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: 'SSRF blocked', candidateId, configVersion: candidate.configVersion } });
-    throw new Error('Blocked URL');
-  }
+  const normalizedSourceUrl = normalizeUrlForComparison(candidate.sourceUrl);
+  const sourcePolicy = {
+    domain: candidate.source.domain,
+    allowedPathPatterns: candidate.source.allowedPathPatterns,
+    blockedPathPatterns: candidate.source.blockedPathPatterns
+  };
 
-  if (url.hostname !== candidate.source.domain || !matchesPathRules(url.pathname, candidate.source.allowedPathPatterns, candidate.source.blockedPathPatterns)) {
+  if (!isApprovedBySourcePolicy(normalizedSourceUrl, sourcePolicy)) {
     await markSourceFailure(candidate.sourceId, 'url_not_approved_for_source');
+    await persistFetchFailure(candidateId, { canonicalUrl: normalizedSourceUrl, lastError: 'url_not_approved_for_source' });
     await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: 'URL not approved by source policy', candidateId, configVersion: candidate.configVersion } });
     throw new Error('URL is not approved by trusted source policy');
   }
 
   let response: Response;
+  let resolvedUrl = normalizedSourceUrl;
   try {
-    response = await fetch(candidate.sourceUrl, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        'user-agent': 'ArtioMiningBot/1.0 (+https://artio.local/mining)'
-      }
-    });
+    const result = await fetchWithPolicy(normalizedSourceUrl, sourcePolicy);
+    response = result.response;
+    resolvedUrl = result.finalUrl;
   } catch (error: any) {
-    await markSourceFailure(candidate.sourceId, `fetch_exception:${error.message}`);
-    await prisma.miningCandidate.update({
-      where: { id: candidateId },
-      data: {
-        retryCount: { increment: 1 },
-        lastError: `fetch_exception:${error.message}`
-      }
+    const reason = String(error?.message ?? 'fetch_exception');
+    await markSourceFailure(candidate.sourceId, reason.startsWith('redirect_') ? reason : `fetch_exception:${reason}`);
+    await persistFetchFailure(candidateId, {
+      canonicalUrl: resolvedUrl,
+      lastError: reason.startsWith('redirect_') ? reason : `fetch_exception:${reason}`
     });
-    await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: JSON.stringify({ sourceId: candidate.sourceId, reason: 'network_exception' }), candidateId, configVersion: candidate.configVersion } });
+    await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: JSON.stringify({ sourceId: candidate.sourceId, reason }), candidateId, configVersion: candidate.configVersion } });
     throw error;
   }
 
   const payload = await response.text();
   const contentType = response.headers.get('content-type');
-  const resolvedUrl = response.url || candidate.sourceUrl;
   const rawHash = createHash('sha256').update(payload).digest('hex');
 
   if (!response.ok) {
