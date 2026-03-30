@@ -11,6 +11,20 @@ datasource db {
 model MiningCandidate {
   id              String   @id @default(cuid())
   sourceUrl       String
+  sourceId        String?
+  sourceDomain    String?
+  discoveredFromUrl String?
+  canonicalUrl    String?
+  fetchStatusCode Int?
+  fetchContentType String?
+  fetchedAt        DateTime?
+  rawHash         String?
+  parserType      String?
+  discoveryMethod String?
+  entityType      String?
+  region          String?
+  retryCount      Int      @default(0)
+  lastError       String?
   html            String?
   extractedJson   Json?
   normalizedJson  Json?
@@ -21,6 +35,12 @@ model MiningCandidate {
   configVersion   Int      @default(1)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+
+  source          TrustedSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+
+  @@index([sourceId])
+  @@index([canonicalUrl])
+  @@index([createdAt])
 }
 
 model ExportBatch {
@@ -47,4 +67,32 @@ model PipelineConfig {
   isActive   Boolean  @default(false)
   payload    Json
   createdAt  DateTime @default(now())
+}
+
+model TrustedSource {
+  id                    String   @id @default(cuid())
+  name                  String
+  domain                String
+  seedUrl               String   @unique
+  sourceType            String
+  region                String
+  trustTier             Int
+  status                String   @default("ACTIVE")
+  allowedPathPatterns   String[] @default([])
+  blockedPathPatterns   String[] @default([])
+  extractorType         String?
+  crawlDepth            Int      @default(0)
+  maxUrlsPerRun         Int      @default(1)
+  lastDiscoveredAt      DateTime?
+  lastSuccessAt         DateTime?
+  lastFailureAt         DateTime?
+  failureCount          Int      @default(0)
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  candidates            MiningCandidate[]
+
+  @@index([status])
+  @@index([domain])
 }

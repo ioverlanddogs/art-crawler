@@ -5,9 +5,20 @@ import { deduplicateQueue } from '../queues.js';
 import { enqueueNextStage } from '../lib/stage-chaining.js';
 
 export async function runScore(candidateId: string, enqueueNext = true) {
-  const c = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId } });
+  const c = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId }, include: { source: true } });
   const norm = (c.normalizedJson as any) ?? {};
-  const signals = computeSignals({ title: norm.title, sourceUrl: c.sourceUrl, platform: norm.platform ?? 'generic' });
+  const ext = (c.extractedJson as any) ?? {};
+  const extractionCompleteness = [ext.title ?? ext.name, ext.startDate ?? ext.startAt, ext.location ?? ext.venue]
+    .filter(Boolean).length / 3;
+  const signals = computeSignals({
+    title: norm.title,
+    sourceUrl: c.sourceUrl,
+    platform: norm.platform ?? 'generic',
+    trustTier: c.source?.trustTier,
+    parserType: c.parserType,
+    extractionCompleteness,
+    sourceFailureCount: c.source?.failureCount
+  });
   const score = inferScore(signals);
   await prisma.miningCandidate.update({ where: { id: candidateId }, data: { confidenceScore: score, status: 'SCORED' } });
   await prisma.pipelineTelemetry.create({ data: { stage: 'score', status: 'success', candidateId, configVersion: c.configVersion, detail: JSON.stringify(signals) } });
