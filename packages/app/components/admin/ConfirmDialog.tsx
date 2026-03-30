@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { ActionButton } from './ActionButton';
 
 export function ConfirmDialog({
@@ -14,7 +14,8 @@ export function ConfirmDialog({
   reasonRequired = false,
   submitting = false,
   onCancel,
-  onConfirm
+  onConfirm,
+  children
 }: {
   open: boolean;
   title: string;
@@ -27,6 +28,7 @@ export function ConfirmDialog({
   submitting?: boolean;
   onCancel: () => void;
   onConfirm: (payload: { reason?: string; confirmText?: string }) => void;
+  children?: ReactNode;
 }) {
   const [reason, setReason] = useState('');
   const [confirmText, setConfirmText] = useState('');
@@ -116,6 +118,7 @@ export function ConfirmDialog({
             />
           </label>
         ) : null}
+        {children}
         {confirmToken ? (
           <label className="stack">
             <span className="muted">Type {confirmToken} to confirm</span>

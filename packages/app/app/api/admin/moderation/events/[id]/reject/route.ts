@@ -4,7 +4,8 @@ import { requireRole } from '@/lib/auth-guard';
 import { err, forbidden, ok } from '@/lib/api/response';
 
 const schema = z.object({
-  reason: z.string().optional(),
+  reasonCode: z.string().trim().min(1),
+  note: z.string().trim().max(500).optional(),
   expectedStatus: z.enum(['PENDING']).optional()
 });
 
@@ -17,7 +18,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const parsed = schema.safeParse(await req.json());
-  if (!parsed.success) return err('Invalid payload', 'VALIDATION_ERROR', 400);
+  if (!parsed.success) return err('Reject reason is required', 'VALIDATION_ERROR', 400);
 
   const result = await prisma.$transaction(async (tx) => {
     const existing = await tx.ingestExtractedEvent.findUnique({ where: { id: params.id } });
@@ -27,13 +28,15 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       return { kind: 'conflict' as const };
     }
 
+    const rejectionSummary = parsed.data.note ? `${parsed.data.reasonCode}: ${parsed.data.note}` : parsed.data.reasonCode;
+
     const updated = await tx.ingestExtractedEvent.update({
       where: { id: params.id },
       data: {
         status: 'REJECTED',
         moderatedBy: session.user.id,
         moderatedAt: new Date(),
-        rejectionReason: parsed.data.reason ?? null
+        rejectionReason: rejectionSummary
       }
     });
 
@@ -41,7 +44,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       data: {
         stage: 'moderation_reject',
         status: 'success',
-        detail: parsed.data.reason ?? 'Rejected',
+        detail: rejectionSummary,
         entityId: updated.id,
         entityType: 'event',
         configVersion: updated.configVersion
