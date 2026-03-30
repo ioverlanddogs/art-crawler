@@ -16,6 +16,11 @@ export * from './Toast';
 export * from './InvestigationSearch';
 export * from './InvestigationSummary';
 export * from './InvestigationTimeline';
+export * from './AuditLogTable';
+export * from './ChangeImpactNotice';
+export * from './ConfigDiffSummary';
+export * from './GovernanceStateBadge';
+export * from './ModelSummaryCard';
 export * from './types';
 
 export * from './moderation';
