@@ -1,6 +1,7 @@
 import { prisma } from '../lib/db.js';
 import { loadActiveConfig } from '../lib/config.js';
 import { fetchQueue } from '../queues.js';
+import { enqueueNextStage } from '../lib/stage-chaining.js';
 
 export async function runDiscovery(enqueueNext = true) {
   const cfg = await loadActiveConfig();
@@ -13,7 +14,7 @@ export async function runDiscovery(enqueueNext = true) {
   });
   await prisma.pipelineTelemetry.create({ data: { stage: 'discovery', status: 'success', candidateId: candidate.id, configVersion: cfg.version } });
   if (enqueueNext) {
-    await fetchQueue.add('fetch', { candidateId: candidate.id });
+    await enqueueNextStage(fetchQueue, 'fetch', candidate.id);
   }
   return candidate;
 }

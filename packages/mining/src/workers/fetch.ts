@@ -1,5 +1,6 @@
 import { prisma } from '../lib/db.js';
 import { extractQueue } from '../queues.js';
+import { enqueueNextStage } from '../lib/stage-chaining.js';
 
 export async function runFetch(candidateId: string, enqueueNext = true) {
   const candidate = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId } });
@@ -13,6 +14,6 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
   await prisma.miningCandidate.update({ where: { id: candidateId }, data: { html, status: 'FETCHED' } });
   await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'success', candidateId, configVersion: candidate.configVersion } });
   if (enqueueNext) {
-    await extractQueue.add('extract', { candidateId });
+    await enqueueNextStage(extractQueue, 'extract', candidateId);
   }
 }

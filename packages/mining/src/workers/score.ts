@@ -2,6 +2,7 @@ import { prisma } from '../lib/db.js';
 import { computeSignals } from '../lib/signals.js';
 import { inferScore } from '../lib/model.js';
 import { deduplicateQueue } from '../queues.js';
+import { enqueueNextStage } from '../lib/stage-chaining.js';
 
 export async function runScore(candidateId: string, enqueueNext = true) {
   const c = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId } });
@@ -11,6 +12,6 @@ export async function runScore(candidateId: string, enqueueNext = true) {
   await prisma.miningCandidate.update({ where: { id: candidateId }, data: { confidenceScore: score, status: 'SCORED' } });
   await prisma.pipelineTelemetry.create({ data: { stage: 'score', status: 'success', candidateId, configVersion: c.configVersion, detail: JSON.stringify(signals) } });
   if (enqueueNext) {
-    await deduplicateQueue.add('deduplicate', { candidateId });
+    await enqueueNextStage(deduplicateQueue, 'deduplicate', candidateId);
   }
 }
