@@ -1,3 +1,4 @@
+import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { runDiscovery } from './workers/discovery.js';
 import { runFetch } from './workers/fetch.js';
 import { runExtract } from './workers/extract.js';
@@ -22,9 +23,33 @@ export async function runVerticalSlice() {
   return candidate.id;
 }
 
+function startHealthServer() {
+  const port = Number(process.env.MINING_HEALTH_PORT ?? 7301);
+  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    if (req.url === '/healthz' || req.url === '/readyz') {
+      const body = JSON.stringify({
+        service: 'artio-mining',
+        status: 'ok',
+        uptimeSeconds: Math.floor(process.uptime())
+      });
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(body);
+      return;
+    }
+
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+  });
+
+  server.listen(port, () => {
+    console.log(`[mining] health server listening on :${port}`);
+  });
+}
+
 if (process.env.RUN_ONCE === 'true') {
   runVerticalSlice().then((id) => console.log(`vertical slice done for ${id}`));
 } else {
+  startHealthServer();
   startScheduler();
-  console.log('Mining scheduler started');
+  console.log('[mining] scheduler started (cron: */5 * * * *)');
 }

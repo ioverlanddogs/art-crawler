@@ -30,6 +30,15 @@ npm run prisma:push -w @artio/mining
 npm run seed:demo
 ```
 
+## Run services locally
+```bash
+# app server
+npm run dev -w @artio/app
+
+# mining scheduler + health endpoint on :7301/healthz
+npm run dev -w @artio/mining
+```
+
 ## Deterministic vertical-slice demo
 ```bash
 # terminal 1
@@ -41,23 +50,31 @@ npm run demo:vertical-slice
 
 Then verify:
 - `GET /api/admin/moderation/queue`
+- `GET /api/healthz`
+- `GET http://localhost:7301/healthz`
 - Open `http://localhost:3000/moderation`
 
 ## Validation commands
 ```bash
 npm run build
 npm run test
+npm run lint
 npm run test:e2e
 ```
 
-## Deferred / clearly out-of-scope in this MVP
-- Full admin moderation UX (bulk actions, duplicate cluster UX).
-- Full auth hardening and invite acceptance completion UX.
-- Production-grade mining scheduler orchestration and observability dashboards.
-- Complete Layer 1–8 endpoint and screen coverage from the full spec bundle.
+## Playwright smoke test setup (headless)
+Playwright runs headless by default.
 
-## Known limitations
-- This repo assumes local Docker availability for Postgres/Redis.
-- Test coverage is focused on one vertical slice and smoke-path behavior.
-- E2E tests expect a running local app server and seeded DB state.
-- Some spec-listed endpoints remain intentionally deferred (see section above).
+```bash
+# one-time browser install
+npx playwright install --with-deps chromium
+
+# run app server in one terminal, then run smoke tests
+npm run dev -w @artio/app
+npm run test:e2e
+```
+
+## Current scope notes
+- Test coverage is focused on MVP critical paths (unit + integration + smoke e2e).
+- Local development assumes Docker availability for Postgres/Redis.
+- Mining-to-app writes remain constrained to the import API boundary.
