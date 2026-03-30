@@ -1,11 +1,14 @@
+import { PageHeader } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import { ConfigClient } from './ConfigClient';
 
-export default async function Page() {
-  const candidateCount = await prisma.candidate.count();
+export default async function ConfigPage() {
+  const versions = await prisma.pipelineConfigVersion.findMany({ orderBy: { version: 'desc' } });
+
   return (
-    <section>
-      <h1>Config</h1>
-      <p>Candidate count: {candidateCount}</p>
-    </section>
+    <div className="stack">
+      <PageHeader title="Config Versions" description="Review available config snapshots and activate the desired version." />
+      <ConfigClient initialVersions={versions} />
+    </div>
   );
 }
