@@ -16,7 +16,15 @@
 ## Run services
 - App: `npm run dev -w @artio/app`
 - Mining once: `RUN_ONCE=true npm run dev -w @artio/mining`
-- Mining scheduler: `npm run dev -w @artio/mining`
+- Mining scheduler + health endpoint: `npm run dev -w @artio/mining` (`http://localhost:7301/healthz`)
 
 ## Deterministic vertical-slice demo
 `npm run demo:vertical-slice`
+
+## Validate
+- App health: `curl http://localhost:3000/api/healthz`
+- Mining health: `curl http://localhost:7301/healthz`
+- Build: `npm run build`
+- Tests: `npm run test`
+- Lint: `npm run lint`
+- E2E smoke: `npm run test:e2e`

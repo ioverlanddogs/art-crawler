@@ -14,3 +14,22 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
+
+  local-bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: cp .env.example .env
+      - run: docker compose up -d
+      - run: npm install
+      - run: npm run prisma:generate -w @artio/app
+      - run: npm run prisma:generate -w @artio/mining
+      - run: npm run prisma:push -w @artio/app
+      - run: npm run prisma:push -w @artio/mining
+      - run: npm run seed:demo
+      - run: npm run build
+      - run: npm run test
+      - run: npm run lint
