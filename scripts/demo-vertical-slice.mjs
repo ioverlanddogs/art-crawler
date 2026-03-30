@@ -2,16 +2,19 @@
 import { request } from 'node:http';
 
 const payload = JSON.stringify({
-  externalBatchId: 'demo-batch-001',
-  configVersion: 1,
-  candidates: [
+  source: 'mining-service-v1',
+  region: 'us',
+  events: [
     {
+      venueUrl: 'https://example.test/events',
       title: 'Deterministic Demo Candidate',
+      startAt: '2026-01-10T18:00:00.000Z',
+      timezone: 'UTC',
+      source: 'mining-service-v1',
+      miningConfidenceScore: 77,
+      observationCount: 2,
       sourceUrl: 'https://example.test/demo-candidate',
-      sourcePlatform: 'web',
-      fingerprint: 'demo0001',
-      confidenceScore: 0.77,
-      signals: { demo: 1 }
+      crossSourceMatches: 0
     }
   ]
 });
@@ -23,7 +26,7 @@ const req = request(
     headers: {
       'content-type': 'application/json',
       'content-length': Buffer.byteLength(payload),
-      authorization: `Bearer ${process.env.MINING_IMPORT_SECRET ?? 'dev-mining-secret'}`
+      authorization: `Bearer ${process.env.MINING_SERVICE_SECRET ?? process.env.MINING_IMPORT_SECRET ?? 'dev-mining-secret'}`
     }
   },
   (res) => {
