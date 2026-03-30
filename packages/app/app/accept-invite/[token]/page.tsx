@@ -1,37 +1,62 @@
-import crypto from 'node:crypto';
-import { prisma } from '@/lib/db';
+import React from 'react';
+import { redirect } from 'next/navigation';
+import {
+  acceptInvite,
+  findPendingInviteByToken,
+  mapAcceptInviteErrorToUiMessage
+} from '@/lib/invites/accept-invite';
 
-async function acceptInvite(formData: FormData) {
+async function activateInvite(formData: FormData) {
   'use server';
 
   const token = String(formData.get('token') ?? '');
-  const name = String(formData.get('name') ?? '');
-  const password = String(formData.get('password') ?? '');
-  const confirmPassword = String(formData.get('confirmPassword') ?? '');
+  const result = await acceptInvite({
+    token,
+    name: String(formData.get('name') ?? ''),
+    password: String(formData.get('password') ?? ''),
+    confirmPassword: String(formData.get('confirmPassword') ?? '')
+  });
 
-  if (password.length < 12 || password !== confirmPassword) {
-    return;
+  if (!result.ok) {
+    redirect(`/accept-invite/${encodeURIComponent(token)}?error=${result.code}`);
   }
 
-  await fetch(`${process.env.NEXTAUTH_URL ?? ''}/api/auth/accept-invite`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ token, name, password, confirmPassword })
-  });
+  redirect(`/accept-invite/${encodeURIComponent(token)}?accepted=1`);
 }
 
-export default async function AcceptInvite({ params }: { params: { token: string } }) {
-  const tokenHash = crypto.createHash('sha256').update(params.token).digest('hex');
-  const invite = await prisma.adminInvite.findUnique({ where: { tokenHash }, include: { user: true } });
+type AcceptInvitePageProps = {
+  params: { token: string };
+  searchParams?: { error?: string; accepted?: string };
+};
 
-  if (!invite || invite.usedAt || invite.expiresAt < new Date()) {
+export default async function AcceptInvite({ params, searchParams }: AcceptInvitePageProps) {
+  if (searchParams?.accepted === '1') {
+    return (
+      <main style={{ maxWidth: 480, margin: '80px auto', padding: 20 }}>
+        <h1>Account activated</h1>
+        <p>Your account is active. You can now sign in with your new credentials.</p>
+        <a href="/login">Go to login</a>
+      </main>
+    );
+  }
+
+  const invite = await findPendingInviteByToken(params.token);
+  if (!invite) {
     return <main><h1>Invite invalid</h1><p>This invite is expired, already used, or invalid.</p></main>;
   }
+
+  const errorCode = searchParams?.error;
+  const hasKnownError = errorCode === 'VALIDATION_ERROR' || errorCode === 'INVALID_INVITE' || errorCode === 'INTERNAL_ERROR';
 
   return (
     <main style={{ maxWidth: 480, margin: '80px auto', padding: 20 }}>
       <h1>Accept invite</h1>
-      <form action={acceptInvite} style={{ display: 'grid', gap: 12 }}>
+      {hasKnownError ? (
+        <p role="alert" style={{ color: '#b91c1c' }}>
+          {mapAcceptInviteErrorToUiMessage(errorCode)}
+        </p>
+      ) : null}
+      <form action={activateInvite} style={{ display: 'grid', gap: 12 }}>
         <input type="hidden" name="token" value={params.token} />
         <label>
           Name
