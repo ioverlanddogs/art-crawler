@@ -1,15 +1,30 @@
 import { PageHeader } from '@/components/admin';
 import { prisma } from '@/lib/db';
-import { listModerationCandidates } from '@/lib/pipeline/import-service';
 import { ModerationClient } from './ModerationClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ModerationPage() {
   const [items, failures] = await Promise.all([
-    listModerationCandidates(prisma),
+    prisma.ingestExtractedEvent.findMany({
+      where: { status: 'PENDING' },
+      orderBy: [{ confidenceScore: 'desc' }, { createdAt: 'desc' }],
+      take: 100
+    }),
     prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: inLast24Hours() } } })
   ]);
+
+  const initialItems = items.map((item: any) => ({
+    id: item.id,
+    title: item.title,
+    sourceUrl: item.sourceUrl,
+    source: item.source,
+    confidenceScore: item.confidenceScore,
+    confidenceBand: item.confidenceBand,
+    status: item.status,
+    importBatchId: item.importBatchId,
+    createdAt: item.createdAt.toISOString()
+  }));
 
   return (
     <div className="stack">
@@ -17,7 +32,7 @@ export default async function ModerationPage() {
         title="Moderation Queue"
         description="Review imported candidates and decide whether each candidate should advance."
       />
-      <ModerationClient initialItems={items} failureCount={failures} />
+      <ModerationClient initialItems={initialItems} failureCount={failures} />
     </div>
   );
 }

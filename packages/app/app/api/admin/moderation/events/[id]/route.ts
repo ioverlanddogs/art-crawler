@@ -16,12 +16,22 @@ export async function GET(_: Request, { params }: { params: { id: string } }) {
 
   if (!record) return notFound('Event candidate');
 
-  const cluster = record.clusterKey
-    ? await prisma.ingestExtractedEvent.findMany({
-        where: { clusterKey: record.clusterKey, NOT: { id: record.id } },
-        orderBy: { confidenceScore: 'desc' }
-      })
-    : [];
+  const [cluster, moderationHistory] = await Promise.all([
+    record.clusterKey
+      ? prisma.ingestExtractedEvent.findMany({
+          where: { clusterKey: record.clusterKey, NOT: { id: record.id } },
+          orderBy: { confidenceScore: 'desc' }
+        })
+      : Promise.resolve([]),
+    prisma.pipelineTelemetry.findMany({
+      where: {
+        entityId: record.id,
+        stage: { startsWith: 'moderation_' }
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 12
+    })
+  ]);
 
-  return ok({ ...record, cluster });
+  return ok({ ...record, cluster, moderationHistory });
 }

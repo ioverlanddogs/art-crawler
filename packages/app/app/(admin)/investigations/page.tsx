@@ -7,18 +7,21 @@ export const dynamic = 'force-dynamic';
 export default async function InvestigationsPage({
   searchParams
 }: {
-  searchParams?: { stage?: string };
+  searchParams?: { stage?: string; candidateId?: string; importBatchId?: string; source?: string };
 }) {
   const stageFilter = searchParams?.stage?.trim() || undefined;
+  const candidateId = searchParams?.candidateId?.trim() || undefined;
+  const importBatchId = searchParams?.importBatchId?.trim() || undefined;
+  const source = searchParams?.source?.trim() || undefined;
   const [failureTelemetry, lowConfidence, rejectedToday] = await Promise.all([
     prisma.pipelineTelemetry.findMany({
       where: { status: 'failure', ...(stageFilter ? { stage: stageFilter } : {}) },
       orderBy: { createdAt: 'desc' },
       take: 20
     }),
-    prisma.candidate.findMany({ where: { confidenceScore: { lt: 0.35 } }, orderBy: { createdAt: 'desc' }, take: 8 }),
+    prisma.candidate.findMany({ where: { confidenceScore: { lt: 0.35 }, ...(candidateId ? { id: candidateId } : {}), ...(source ? { sourcePlatform: source } : {}) }, orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.candidate.findMany({
-      where: { status: 'REJECTED', updatedAt: { gte: inLast24Hours() } },
+      where: { status: 'REJECTED', updatedAt: { gte: inLast24Hours() }, ...(candidateId ? { id: candidateId } : {}), ...(source ? { sourcePlatform: source } : {}), ...(importBatchId ? { importBatchId } : {}) },
       orderBy: { updatedAt: 'desc' },
       take: 8
     })
@@ -28,11 +31,11 @@ export default async function InvestigationsPage({
     <div className="stack">
       <PageHeader
         title="Investigation Workspace"
-        description={`Deep-dive on failure signals, repeated rejects, and low-confidence candidates before moderation decisions${stageFilter ? ` (filtered: ${stageFilter})` : ''}.`}
+        description={`Deep-dive on failure signals, repeated rejects, and low-confidence candidates before moderation decisions${stageFilter ? ` (stage: ${stageFilter})` : ''}${candidateId ? ` (candidate: ${candidateId})` : ''}.`}
         actions={
-          stageFilter ? (
+          stageFilter || candidateId || importBatchId || source ? (
             <Link href="/investigations" className="inline-link">
-              Clear stage filter
+              Clear filters
             </Link>
           ) : null
         }
