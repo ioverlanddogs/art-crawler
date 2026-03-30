@@ -332,3 +332,54 @@ a { color: inherit; text-decoration: none; }
     grid-template-columns: 1fr;
   }
 }
+
+.impact-notice {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.75rem;
+}
+
+.impact-notice h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+}
+
+.impact-notice ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.config-diff-summary {
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.config-diff-summary p {
+  margin: 0.2rem 0;
+}
+
+.model-summary-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+}
+
+.model-summary-card p {
+  margin: 0.2rem 0;
+}
+
+.model-summary-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.model-summary-card-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
