@@ -19,21 +19,35 @@ const AUDIT_STAGES = [
 ];
 
 export default async function ConfigPage() {
-  const [versionsResult, modelsResult, auditResult] = await Promise.allSettled([
+  const [versionsResult, modelsResult, auditResult, automationResult] = await Promise.allSettled([
     prisma.pipelineConfigVersion.findMany({ orderBy: { version: 'desc' }, take: 30 }),
     prisma.modelVersion.findMany({ orderBy: { createdAt: 'desc' }, take: 30 }),
     prisma.pipelineTelemetry.findMany({
       where: { stage: { in: AUDIT_STAGES } },
       orderBy: { createdAt: 'desc' },
       take: 150
+    }),
+    prisma.pipelineTelemetry.findMany({
+      where: {
+        OR: [
+          { stage: { contains: 'auto' } },
+          { stage: { contains: 'rule' } },
+          { stage: { contains: 'policy' } },
+          { stage: { contains: 'bulk' } },
+          { stage: { contains: 'escalat' } }
+        ]
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 120
     })
   ]);
 
   const versions = versionsResult.status === 'fulfilled' ? versionsResult.value : [];
   const models = modelsResult.status === 'fulfilled' ? modelsResult.value : [];
   const auditEvents = auditResult.status === 'fulfilled' ? auditResult.value : [];
+  const automationEvents = automationResult.status === 'fulfilled' ? automationResult.value : [];
 
-  const hasPartialData = [versionsResult, modelsResult, auditResult].some((result) => result.status === 'rejected');
+  const hasPartialData = [versionsResult, modelsResult, auditResult, automationResult].some((result) => result.status === 'rejected');
 
   return (
     <div className="stack">
@@ -46,7 +60,13 @@ export default async function ConfigPage() {
           This page is still usable, but one or more data sources did not load. Missing sections are labeled with incomplete context.
         </AlertBanner>
       ) : null}
-      <ConfigClient initialVersions={versions} initialModels={models} auditEvents={auditEvents} hasPartialData={hasPartialData} />
+      <ConfigClient
+        initialVersions={versions}
+        initialModels={models}
+        auditEvents={auditEvents}
+        automationEvents={automationEvents}
+        hasPartialData={hasPartialData}
+      />
     </div>
   );
 }

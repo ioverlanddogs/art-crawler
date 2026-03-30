@@ -23,7 +23,9 @@ export default async function ModerationPage() {
     confidenceBand: item.confidenceBand,
     status: item.status,
     importBatchId: item.importBatchId,
-    createdAt: item.createdAt.toISOString()
+    createdAt: item.createdAt.toISOString(),
+    autoApproved: item.autoApproved,
+    clusterKey: item.clusterKey
   }));
 
   return (

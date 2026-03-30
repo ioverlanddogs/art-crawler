@@ -5,16 +5,21 @@ import {
   ActionButton,
   AlertBanner,
   AuditLogTable,
+  AutomatedActionFeed,
+  AutomationStateBadge,
   ChangeImpactNotice,
   ConfigDiffSummary,
   ConfirmDialog,
   DataTable,
   EmptyState,
+  ExplainabilityPanel,
   GovernanceStateBadge,
   ModelSummaryCard,
+  RuleScopeSummary,
   SectionCard,
   ToastRegion,
   type AuditLogItem,
+  type AutomationState,
   type GovernanceState,
   type ToastMessage
 } from '@/components/admin';
@@ -53,6 +58,20 @@ type AuditEvent = {
   status?: string;
   detail: string | null;
   createdAt: string | Date;
+};
+
+type RuleRow = {
+  id: string;
+  name: string;
+  state: AutomationState;
+  scope: {
+    source?: string | null;
+    regions: string[];
+    entityTypes: string[];
+    coverage?: string | null;
+  };
+  explainability: string[];
+  partial: boolean;
 };
 
 function parseDate(value: string | Date | null | undefined): string {
@@ -96,15 +115,86 @@ function deriveAuditState(event: AuditEvent): GovernanceState {
   return 'unknown';
 }
 
+function inferRuleState(rule: Record<string, unknown>): AutomationState {
+  const status = String(rule.status ?? rule.state ?? '').toLowerCase();
+  const mode = String(rule.mode ?? '').toLowerCase();
+  if (status.includes('disable') || mode === 'disabled') return 'disabled';
+  if (status.includes('shadow') || mode === 'shadow') return 'shadow';
+  if (status.includes('pause') || mode === 'paused') return 'paused';
+  if (status.includes('rate')) return 'rate_limited';
+  if (status.includes('exception')) return 'exception_heavy';
+  if (status.includes('active') || mode === 'active' || mode === 'enforce') return 'active';
+  return 'unknown';
+}
+
+function parseRules(configJson: unknown, region?: string | null): RuleRow[] {
+  if (!configJson || typeof configJson !== 'object' || Array.isArray(configJson)) return [];
+  const source = configJson as Record<string, unknown>;
+  const candidates = Array.isArray(source.rules)
+    ? source.rules
+    : Array.isArray(source.automationRules)
+      ? source.automationRules
+      : Array.isArray(source.policies)
+        ? source.policies
+        : [];
+
+  return candidates
+    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object' && !Array.isArray(item)))
+    .map((rule, index) => {
+      const id = String(rule.id ?? rule.key ?? `rule-${index + 1}`);
+      const name = String(rule.name ?? rule.title ?? rule.policy ?? `Rule ${index + 1}`);
+      const regions = Array.isArray(rule.regions)
+        ? rule.regions.map(String)
+        : Array.isArray(rule.region)
+          ? rule.region.map(String)
+          : region
+            ? [region]
+            : [];
+      const entityTypes = Array.isArray(rule.entityTypes)
+        ? rule.entityTypes.map(String)
+        : Array.isArray(rule.entities)
+          ? rule.entities.map(String)
+          : [];
+      const criteria = Array.isArray(rule.criteria)
+        ? rule.criteria.map((criterion) => String(criterion))
+        : Array.isArray(rule.matches)
+          ? rule.matches.map((criterion) => String(criterion))
+          : [];
+
+      return {
+        id,
+        name,
+        state: inferRuleState(rule),
+        scope: {
+          source: typeof rule.source === 'string' ? rule.source : null,
+          regions,
+          entityTypes,
+          coverage: typeof rule.coverage === 'string' ? rule.coverage : null
+        },
+        explainability: criteria,
+        partial: criteria.length === 0 || regions.length === 0
+      };
+    });
+}
+
+function deriveActionOrigin(stage: string, detail: string | null): 'automation' | 'human' | 'unknown' {
+  const lowered = `${stage} ${detail ?? ''}`.toLowerCase();
+  if (lowered.includes('auto') || lowered.includes('rule') || lowered.includes('policy')) return 'automation';
+  if (lowered.includes('actor=') || lowered.includes('moderatedby')) return 'human';
+  return 'unknown';
+}
+
 export function ConfigClient({
   initialVersions,
   initialModels,
   auditEvents,
+  automationEvents,
   hasPartialData
 }: {
   initialVersions: ConfigVersion[];
   initialModels: ModelVersion[];
   auditEvents: AuditEvent[];
+  automationEvents: AuditEvent[];
   hasPartialData: boolean;
 }) {
   const [versions, setVersions] = useState(initialVersions);
@@ -123,7 +213,12 @@ export function ConfigClient({
   const previousVersion = sortedVersions.find((item) => item.id !== activeVersion?.id) || null;
 
   const activeModel = useMemo(() => models.find((item) => deriveModelState(item) === 'active') || null, [models]);
-  const shadowModel = useMemo(() => models.find((item) => item.id !== activeModel?.id && (item.isShadow || item.status === 'SHADOW')) || null, [activeModel?.id, models]);
+  const shadowModel = useMemo(
+    () => models.find((item) => item.id !== activeModel?.id && (item.isShadow || item.status === 'SHADOW')) || null,
+    [activeModel?.id, models]
+  );
+
+  const automationRules = useMemo(() => parseRules(activeVersion?.configJson, activeVersion?.region), [activeVersion?.configJson, activeVersion?.region]);
 
   const auditRows = useMemo<AuditLogItem[]>(() => {
     return auditEvents.map((event) => {
@@ -146,6 +241,21 @@ export function ConfigClient({
       };
     });
   }, [auditEvents]);
+
+  const automatedActionFeed = useMemo(() => {
+    return automationEvents.slice(0, 15).map((event) => {
+      const kv = kvFromDetail(event.detail);
+      return {
+        id: event.id,
+        at: new Date(event.createdAt).toISOString(),
+        action: event.stage.replaceAll('_', ' '),
+        outcome: event.status ?? 'unknown',
+        origin: deriveActionOrigin(event.stage, event.detail),
+        scope: kv.scope || kv.target || kv.region || 'Scope metadata unavailable',
+        reason: kv.reason || kv.explanation || 'No reason captured'
+      };
+    });
+  }, [automationEvents]);
 
   const activationHistory = useMemo(
     () => auditRows.filter((event) => event.action.includes('config activate') || event.action.includes('config rollback')).slice(0, 8),
@@ -193,7 +303,14 @@ export function ConfigClient({
         body: JSON.stringify({ reason, confirmText })
       });
       if (!res.ok) throw new Error(`Promote failed with status ${res.status}`);
-      setModels((prev) => prev.map((item) => ({ ...item, isActive: item.id === id, isShadow: item.id === id ? false : item.isShadow, status: item.id === id ? 'ACTIVE' : item.status })));
+      setModels((prev) =>
+        prev.map((item) => ({
+          ...item,
+          isActive: item.id === id,
+          isShadow: item.id === id ? false : item.isShadow,
+          status: item.id === id ? 'ACTIVE' : item.status
+        }))
+      );
       pushToast({ tone: 'success', title: `Model ${version} is now live.` });
     } catch (err) {
       pushToast({ tone: 'error', title: 'Model promotion failed.', description: err instanceof Error ? err.message : 'Unknown error' });
@@ -236,7 +353,11 @@ export function ConfigClient({
               'Promotion is a manual global action with typed confirmation.',
               'Rollback may require re-promoting a known-safe prior model version.'
             ]}
-            footer={<a href="#audit-log" className="inline-link">Review promotion history in audit log</a>}
+            footer={
+              <a href="#audit-log" className="inline-link">
+                Review promotion history in audit log
+              </a>
+            }
           />
           <div className="stack">
             <ModelSummaryCard
@@ -262,6 +383,55 @@ export function ConfigClient({
               }}
             />
           </div>
+        </SectionCard>
+      </section>
+
+      <section className="two-col" aria-label="Automation and policy operations">
+        <SectionCard title="Automation policy rules" subtitle="Rule states, scope, and explainability from the active config version.">
+          {!automationRules.length ? (
+            <AlertBanner tone="warning" title="No explicit rule list found in active config">
+              Rule-level automation controls are unavailable in current config payload shape. Enable/disable changes must be shipped via a new config version.
+            </AlertBanner>
+          ) : (
+            <div className="stack">
+              {automationRules.map((rule) => (
+                <div key={rule.id} className="rule-card">
+                  <div className="rule-card-header">
+                    <h3>{rule.name}</h3>
+                    <AutomationStateBadge state={rule.state} />
+                  </div>
+                  <RuleScopeSummary {...rule.scope} />
+                  <ExplainabilityPanel
+                    title="Why this rule applies"
+                    summary={
+                      rule.partial
+                        ? 'Rule criteria is partially available. Treat this summary as directional and verify in config history before enforcement changes.'
+                        : 'Rule criteria is available and can be reviewed before operators decide to override.'
+                    }
+                    matchedCriteria={rule.explainability.length ? rule.explainability : ['Criteria details missing from config payload.']}
+                    thresholdContext="Threshold details may be stored in configJson; when absent, this UI labels context as partial."
+                    boundaryCopy="Human review is required before enabling/disabling a rule because direct toggle APIs are not available."
+                  />
+                  <div className="filters-row">
+                    <ActionButton variant="secondary" disabled>
+                      Enable rule (publish config version)
+                    </ActionButton>
+                    <ActionButton variant="danger" disabled>
+                      Disable rule (publish config version)
+                    </ActionButton>
+                  </div>
+                  <p className="kpi-note">Direct rule toggle API is not currently available. To change state, prepare and activate a new config version with audit reason.</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+
+        <SectionCard title="Recent automated actions" subtitle="Latest automation, bulk, policy, and escalation telemetry in plain language.">
+          <AutomatedActionFeed rows={automatedActionFeed} />
+          <AlertBanner tone="info" title="Simulation / dry-run support">
+            Dry-run simulation output is not available through current admin APIs. Treat shadow mode as observe-only and validate with investigation traces.
+          </AlertBanner>
         </SectionCard>
       </section>
 
@@ -338,6 +508,20 @@ export function ConfigClient({
         </SectionCard>
       </div>
 
+      <SectionCard
+        title="Audit and change history"
+        subtitle="Who changed what, when, and why across config, model, moderation, bulk operations, and governance actions."
+      >
+        <div id="audit-log">
+          <AuditLogTable rows={auditRows} />
+        </div>
+        {hasPartialData ? (
+          <AlertBanner tone="warning" title="Incomplete context">
+            Some audit sources are missing. Rows with unknown actor/reason are explicitly labeled as incomplete context.
+          </AlertBanner>
+        ) : null}
+      </SectionCard>
+
       <div className="two-col">
         <SectionCard title="Activation & rollback history" subtitle="Recent config activations and rollback guidance.">
           {!activationHistory.length ? (
@@ -383,18 +567,6 @@ export function ConfigClient({
           </AlertBanner>
         </SectionCard>
       </div>
-
-      <SectionCard
-        title="Audit and change history"
-        subtitle="Who changed what, when, and why across config, model, moderation, and governance actions."
-      >
-        <AuditLogTable rows={auditRows} />
-        {hasPartialData ? (
-          <AlertBanner tone="warning" title="Incomplete context">
-            Some audit sources are missing. Rows with unknown actor/reason are explicitly labeled as incomplete context.
-          </AlertBanner>
-        ) : null}
-      </SectionCard>
 
       <ConfirmDialog
         open={confirmState !== null}

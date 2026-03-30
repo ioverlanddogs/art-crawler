@@ -31,3 +31,11 @@ export * from './ReplayScopeSummary';
 export * from './RecoveryActionPanel';
 export * from './ReplayEligibilityList';
 export * from './RecoveryAuditFeed';
+
+export * from './AutomationStateBadge';
+export * from './RuleScopeSummary';
+export * from './BulkActionPanel';
+export * from './ScopePreviewTable';
+export * from './ExceptionQueueTable';
+export * from './ExplainabilityPanel';
+export * from './AutomatedActionFeed';
