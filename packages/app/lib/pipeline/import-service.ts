@@ -1,3 +1,4 @@
+import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 
 const candidateSchema = z.object({
@@ -15,9 +16,7 @@ export const importSchema = z.object({
   candidates: z.array(candidateSchema).min(1)
 });
 
-type PrismaLike = any;
-
-export async function processImportBatch(prisma: PrismaLike, payload: unknown) {
+export async function processImportBatch(prisma: PrismaClient, payload: unknown) {
   const body = importSchema.parse(payload);
 
   const batch = await prisma.importBatch.upsert({
@@ -26,17 +25,24 @@ export async function processImportBatch(prisma: PrismaLike, payload: unknown) {
     update: { status: 'RECEIVED' }
   });
 
+  const incomingFingerprints = body.candidates.map((c) => c.fingerprint);
+  const existingRecords = await prisma.candidate.findMany({
+    where: { fingerprint: { in: incomingFingerprints } },
+    select: { fingerprint: true, id: true }
+  });
+  const existingByFingerprint = new Map(existingRecords.map((r: { fingerprint: string; id: string }) => [r.fingerprint, r.id]));
+
   let inserted = 0;
   for (const c of body.candidates) {
-    const existing = await prisma.candidate.findUnique({ where: { fingerprint: c.fingerprint } });
-    if (existing) {
+    const existingId = existingByFingerprint.get(c.fingerprint);
+    if (existingId) {
       await prisma.pipelineTelemetry.create({
         data: {
           stage: 'import',
           status: 'skip',
           detail: 'fingerprint exists',
           configVersion: body.configVersion,
-          candidateId: existing.id
+          candidateId: existingId
         }
       });
       continue;
@@ -67,7 +73,7 @@ export async function processImportBatch(prisma: PrismaLike, payload: unknown) {
   return { batchId: batch.id, inserted };
 }
 
-export async function listModerationCandidates(prisma: PrismaLike) {
+export async function listModerationCandidates(prisma: PrismaClient) {
   const setting = await prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } });
   if (setting?.value !== 'true') return [];
   return prisma.candidate.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'desc' } });

@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "echo 'lint placeholder'",
+    "lint": "eslint 'app/**/*.ts' 'lib/**/*.ts' 'components/**/*.ts' --max-warnings 50",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
@@ -18,7 +18,8 @@
     "next-auth": "^4.24.11",
     "react": "18.3.1",
     "react-dom": "18.3.1",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "bcryptjs": "^2.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.16.3",
@@ -26,6 +27,10 @@
     "@types/react-dom": "^18.3.0",
     "prisma": "^5.22.0",
     "typescript": "^5.6.2",
-    "vitest": "^2.1.1"
+    "vitest": "^2.1.1",
+    "@types/bcryptjs": "^2.4.6",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0"
   }
 }
