@@ -1,5 +1,6 @@
 import { prisma } from '../lib/db.js';
 import { normaliseQueue } from '../queues.js';
+import { enqueueNextStage } from '../lib/stage-chaining.js';
 
 export interface AiExtractor {
   extract(text: string): Promise<Record<string, unknown>>;
@@ -18,6 +19,6 @@ export async function runExtract(candidateId: string, ai: AiExtractor = mockAiEx
   await prisma.miningCandidate.update({ where: { id: candidateId }, data: { extractedJson: extracted, status: 'EXTRACTED' } });
   await prisma.pipelineTelemetry.create({ data: { stage: 'extract', status: 'success', candidateId, configVersion: candidate.configVersion } });
   if (enqueueNext) {
-    await normaliseQueue.add('normalise', { candidateId });
+    await enqueueNextStage(normaliseQueue, 'normalise', candidateId);
   }
 }

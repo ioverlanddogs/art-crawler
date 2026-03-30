@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { forbidden } from '@/lib/api/response';
 import { requireRole } from '@/lib/auth-guard';
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Pipeline config version not found' }, { status: 404 });
   }
 
-  const active = await prisma.$transaction(async (tx) => {
+  const active = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     await tx.pipelineConfigVersion.updateMany({
       where: { region: target.region, status: 'ACTIVE', id: { not: id } },
       data: { status: 'ARCHIVED' }

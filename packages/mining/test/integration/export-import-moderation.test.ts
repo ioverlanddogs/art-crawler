@@ -1,76 +1,79 @@
 import { describe, expect, test } from 'vitest';
-import { buildExportPayload } from '../../src/lib/export';
-import { listModerationCandidates, processImportBatch } from '../../../app/lib/pipeline/import-service';
+import { processImportBatch } from '../../../app/lib/pipeline/import-service.js';
 
-function createFakePrisma() {
+function createFakePrisma(settingValue: 'true' | 'false') {
   const db = {
-    candidates: [] as any[],
-    telemetry: [] as any[],
-    history: [] as any[],
-    settingValue: 'false'
+    events: [] as any[],
+    batches: [] as any[]
   };
 
   return {
     db,
-    importBatch: {
-      async upsert({ where }: any) {
-        return { id: `batch-${where.externalBatchId}` };
-      }
-    },
-    candidate: {
-      async findUnique({ where }: any) {
-        return db.candidates.find((x) => x.fingerprint === where.fingerprint) ?? null;
-      },
-      async create({ data }: any) {
-        const item = { id: `cand-${db.candidates.length + 1}`, status: 'PENDING', createdAt: new Date(), ...data };
-        db.candidates.push(item);
-        return item;
-      },
-      async findMany() {
-        return db.candidates.filter((x) => x.status === 'PENDING');
-      }
-    },
-    confidenceHistory: {
-      async create({ data }: any) {
-        db.history.push(data);
-      }
-    },
-    pipelineTelemetry: {
-      async create({ data }: any) {
-        db.telemetry.push(data);
-      }
-    },
     siteSetting: {
       async findUnique() {
-        return { key: 'mining_import_enabled', value: db.settingValue };
+        return { key: 'mining_import_enabled', value: settingValue };
+      }
+    },
+    importBatch: {
+      async create({ data }: any) {
+        const row = { id: `batch-${db.batches.length + 1}`, ...data };
+        db.batches.push(row);
+        return row;
+      },
+      async update() {
+        return {};
+      }
+    },
+    venueProfile: {
+      async upsert() {
+        return {};
+      }
+    },
+    ingestExtractedEvent: {
+      async findUnique() {
+        return null;
+      },
+      async create({ data }: any) {
+        db.events.push(data);
+        return data;
       }
     }
-  };
+  } as any;
 }
 
-describe('mining export -> app import -> moderation visibility', () => {
-  test('only visible when mining_import_enabled=true', async () => {
-    const prisma = createFakePrisma();
-    const payload = buildExportPayload(
-      {
-        sourceUrl: 'https://example.test/item-1',
-        fingerprint: 'abc12345',
-        confidenceScore: 0.8,
-        configVersion: 7,
-        normalizedJson: { title: 'Demo Candidate', platform: 'web' }
-      },
-      'batch-demo-1'
-    );
+const payload = {
+  source: 'mining-service-v1',
+  region: 'us',
+  events: [
+    {
+      venueUrl: 'https://example.test/events',
+      title: 'Demo Candidate',
+      startAt: '2026-01-10T18:00:00.000Z',
+      timezone: 'UTC',
+      source: 'mining-service-v1',
+      miningConfidenceScore: 91,
+      observationCount: 4
+    }
+  ]
+};
 
-    const imported = await processImportBatch(prisma, payload);
-    expect(imported.inserted).toBe(1);
+describe('mining export -> app import moderation visibility gate', () => {
+  test('suppresses candidate creation when mining_import_enabled=false', async () => {
+    const prisma = createFakePrisma('false');
+    const result = await processImportBatch(prisma, payload);
 
-    prisma.db.settingValue = 'false';
-    expect(await listModerationCandidates(prisma)).toEqual([]);
+    expect(result.imported).toBe(0);
+    expect(result.skipped).toBe(1);
+    expect(prisma.db.events).toHaveLength(0);
+  });
 
-    prisma.db.settingValue = 'true';
-    const queue = await listModerationCandidates(prisma);
-    expect(queue).toHaveLength(1);
-    expect(queue[0].title).toBe('Demo Candidate');
+  test('creates moderation candidate when mining_import_enabled=true', async () => {
+    const prisma = createFakePrisma('true');
+    const result = await processImportBatch(prisma, payload);
+
+    expect(result.imported).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(prisma.db.events).toHaveLength(1);
+    expect(prisma.db.events[0].title).toBe('Demo Candidate');
   });
 });
