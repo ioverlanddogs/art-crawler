@@ -1,9 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { listModerationCandidates } from '@/lib/pipeline/import-service';
 
 export async function GET() {
-  const setting = await prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } });
-  if (setting?.value !== 'true') return NextResponse.json({ items: [] });
-  const items = await prisma.candidate.findMany({ where: { status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+  const items = await listModerationCandidates(prisma);
   return NextResponse.json({ items });
 }

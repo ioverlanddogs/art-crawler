@@ -8,9 +8,16 @@
   ],
   "scripts": {
     "dev": "npm run dev -w @artio/app & npm run dev -w @artio/mining",
-    "build": "npm run build -ws",
-    "test": "npm run test -ws",
-    "lint": "npm run lint -ws",
-    "typecheck": "npm run typecheck -ws"
+    "build": "npm run build --workspaces",
+    "test": "npm run test --workspaces",
+    "test:e2e": "playwright test",
+    "setup:local": "cp -n .env.example .env || true && docker compose up -d && npm install && npm run prisma:generate -w @artio/app && npm run prisma:generate -w @artio/mining && npm run prisma:push -w @artio/app && npm run prisma:push -w @artio/mining && npm run seed:demo",
+    "seed:demo": "node scripts/seed-demo.mjs",
+    "demo:vertical-slice": "node scripts/demo-vertical-slice.mjs",
+    "lint": "npm run lint --workspaces",
+    "typecheck": "npm run typecheck --workspaces"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.1"
   }
 }
