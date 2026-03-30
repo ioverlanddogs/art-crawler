@@ -23,6 +23,8 @@ jobs:
         with:
           node-version: 20
       - run: cp .env.example .env
+      - name: Export local bootstrap env
+        run: cat .env >> "$GITHUB_ENV"
       - run: docker compose up -d
       - run: npm install
       - run: npm run prisma:generate -w @artio/app
