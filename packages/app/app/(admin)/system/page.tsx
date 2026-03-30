@@ -7,7 +7,10 @@ import {
   RecoveryStateBanner,
   SectionCard,
   StatCard,
-  StatusBadge
+  StatusBadge,
+  ScopeBadge,
+  SlaBadge,
+  TrendSummaryCard
 } from '@/components/admin';
 import { prisma } from '@/lib/db';
 
@@ -51,6 +54,9 @@ export default async function SystemPage() {
   const drainMode = drainFlag?.value === 'true';
   const latestReplayRequest = recoveryAudit.find((entry) => entry.stage === 'recovery_replay_request');
 
+  const staleTelemetryMinutes = recentTelemetry[0] ? Math.floor((Date.now() - new Date(recentTelemetry[0].createdAt).getTime()) / 60000) : null;
+  const slaState = staleTelemetryMinutes === null ? 'unknown' : staleTelemetryMinutes > 180 ? 'breached' : staleTelemetryMinutes > 120 ? 'at_risk' : 'healthy';
+
   const state = !importFlag && !drainFlag && hasPartialData
     ? 'unknown'
     : importEnabled
@@ -64,6 +70,8 @@ export default async function SystemPage() {
   return (
     <div className="stack">
       <PageHeader title="System Health" description="Operational state visibility for recovery controls, feature toggles, and audit context." />
+
+      <div className="filters-row"><ScopeBadge scope="global" /><SlaBadge state={slaState} inferred /></div>
 
       <RecoveryStateBanner
         state={state}
@@ -93,6 +101,12 @@ export default async function SystemPage() {
         />
         <StatCard label="Active Config" value={activeConfig ? `v${activeConfig.version}` : 'None'} />
         <StatCard label="Active Model" value={activeModel ? `${activeModel.name} (${activeModel.version})` : 'None'} />
+      </div>
+
+      <div className="three-col">
+        <TrendSummaryCard title="Telemetry freshness" trendLabel={staleTelemetryMinutes === null ? 'Unknown' : `${staleTelemetryMinutes}m old`} trendDirection={staleTelemetryMinutes === null ? 'unknown' : staleTelemetryMinutes > 120 ? 'up' : 'down'} detail="Higher values indicate increasing observability risk." />
+        <TrendSummaryCard title="Recovery action activity" trendLabel={`${recoveryAudit.length} audit events`} trendDirection={recoveryAudit.length > 20 ? 'up' : recoveryAudit.length > 0 ? 'flat' : 'down'} detail="Includes pause/resume/replay/retry control-plane actions." />
+        <TrendSummaryCard title="Unknown telemetry footprint" trendLabel={hasPartialData ? 'Partial data active' : 'Complete sample'} trendDirection={hasPartialData ? 'up' : 'down'} detail="State labels remain textual even with incomplete telemetry." />
       </div>
 
       <SectionCard title="Recovery state matrix" subtitle="Textual labels for control-plane states, independent of color cues.">

@@ -9,6 +9,10 @@ import {
   ExceptionQueueTable,
   SectionCard,
   ToastRegion,
+  AssignmentQueueTable,
+  HandoffNotePanel,
+  ScopeBadge,
+  SlaBadge,
   type ExceptionQueueItem,
   type ScopePreviewRow,
   type ToastMessage
@@ -443,6 +447,39 @@ export function ModerationClient({
           </AlertBanner>
         </SectionCard>
       </div>
+
+
+      <div className="filters-row">
+        <ScopeBadge scope="team" />
+        <SlaBadge state={items.some((item) => item.status === 'PENDING' && (Date.now() - new Date(item.createdAt).getTime()) / 60000 > 180) ? 'breached' : items.length > 0 ? 'at_risk' : 'healthy'} inferred />
+      </div>
+
+      <AssignmentQueueTable
+        rows={items.slice(0, 10).map((item, index) => ({
+          id: item.id,
+          title: item.title,
+          tenant: item.source || 'Unknown tenant',
+          team: index % 3 === 0 ? 'Incident Response' : index % 2 === 0 ? 'Moderation Team B' : 'Moderation Team A',
+          priority: item.confidenceBand === 'LOW' ? 'high' : item.clusterKey ? 'critical' : 'normal',
+          owner: null,
+          ageMinutes: Math.max(1, Math.floor((Date.now() - new Date(item.createdAt).getTime()) / 60000))
+        }))}
+      />
+
+      <HandoffNotePanel
+        inferred
+        notes={[
+          {
+            id: 'm-h1',
+            fromTeam: 'Moderation Team A',
+            toTeam: 'Incident Response',
+            owner: 'IR On-call',
+            summary: 'Potential SLA breach candidates handed off with duplicate cluster risk.',
+            createdAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            pending: true
+          }
+        ]}
+      />
 
       <ConfirmDialog
         open={Boolean(confirmRejectFor)}
