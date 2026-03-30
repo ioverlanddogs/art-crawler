@@ -1,9 +1,21 @@
 import { AlertBanner, DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import Link from 'next/link';
 
-export default async function InvestigationsPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function InvestigationsPage({
+  searchParams
+}: {
+  searchParams?: { stage?: string };
+}) {
+  const stageFilter = searchParams?.stage?.trim() || undefined;
   const [failureTelemetry, lowConfidence, rejectedToday] = await Promise.all([
-    prisma.pipelineTelemetry.findMany({ where: { status: 'failure' }, orderBy: { createdAt: 'desc' }, take: 12 }),
+    prisma.pipelineTelemetry.findMany({
+      where: { status: 'failure', ...(stageFilter ? { stage: stageFilter } : {}) },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    }),
     prisma.candidate.findMany({ where: { confidenceScore: { lt: 0.35 } }, orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.candidate.findMany({
       where: { status: 'REJECTED', updatedAt: { gte: inLast24Hours() } },
@@ -16,7 +28,14 @@ export default async function InvestigationsPage() {
     <div className="stack">
       <PageHeader
         title="Investigation Workspace"
-        description="Deep-dive on failure signals, repeated rejects, and low-confidence candidates before moderation decisions."
+        description={`Deep-dive on failure signals, repeated rejects, and low-confidence candidates before moderation decisions${stageFilter ? ` (filtered: ${stageFilter})` : ''}.`}
+        actions={
+          stageFilter ? (
+            <Link href="/investigations" className="inline-link">
+              Clear stage filter
+            </Link>
+          ) : null
+        }
       />
 
       <div className="stats-grid">
@@ -43,7 +62,15 @@ export default async function InvestigationsPage() {
             rowKey={(row) => row.id}
             emptyState={<EmptyState title="No failures" description="No failed stage executions were found." />}
             columns={[
-              { key: 'stage', header: 'Stage', render: (row) => row.stage },
+              {
+                key: 'stage',
+                header: 'Stage',
+                render: (row) => (
+                  <Link className="inline-link" href={`/investigations?stage=${encodeURIComponent(row.stage)}`}>
+                    {row.stage}
+                  </Link>
+                )
+              },
               { key: 'detail', header: 'Error', render: (row) => row.detail || 'No detail' },
               { key: 'config', header: 'Config', render: (row) => `v${row.configVersion}` },
               { key: 'time', header: 'Time', render: (row) => new Date(row.createdAt).toLocaleString() }

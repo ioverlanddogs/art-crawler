@@ -1,5 +1,8 @@
 import { AlertBanner, DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import Link from 'next/link';
+
+export const dynamic = 'force-dynamic';
 
 export default async function PipelinePage() {
   const [batches, failures, telemetry, failureByStage] = await Promise.all([
@@ -60,7 +63,16 @@ export default async function PipelinePage() {
             { key: 'stage', header: 'Stage', render: (row) => row.stage },
             { key: 'detail', header: 'Detail', render: (row) => row.detail || '—' },
             { key: 'configVersion', header: 'Config', render: (row) => row.configVersion },
-            { key: 'createdAt', header: 'When', render: (row) => new Date(row.createdAt).toLocaleString() }
+            { key: 'createdAt', header: 'When', render: (row) => new Date(row.createdAt).toLocaleString() },
+            {
+              key: 'investigate',
+              header: 'Investigate',
+              render: (row) => (
+                <Link className="inline-link" href={`/investigations?stage=${encodeURIComponent(row.stage)}`}>
+                  Drill down
+                </Link>
+              )
+            }
           ]}
         />
       </SectionCard>
