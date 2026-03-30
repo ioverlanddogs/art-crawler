@@ -1,10 +1,29 @@
-import { AlertBanner, FailureHotspotList, MetricCard, PageHeader, SectionCard, StatusBadge } from '@/components/admin';
+import {
+  FailureHotspotList,
+  MetricCard,
+  PageHeader,
+  RecoveryActionPanel,
+  RecoveryAuditFeed,
+  RecoveryStateBanner,
+  ReplayEligibilityList,
+  SectionCard,
+  StatusBadge
+} from '@/components/admin';
 import { prisma } from '@/lib/db';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
 const PIPELINE_STAGES = ['discovery', 'fetch', 'extract', 'normalise', 'score', 'deduplicate', 'enrich', 'mature', 'export', 'import'] as const;
+const RECOVERY_AUDIT_STAGES = [
+  'recovery_pause',
+  'recovery_resume',
+  'recovery_drain_start',
+  'recovery_drain_stop',
+  'recovery_replay_request',
+  'recovery_retry_request',
+  'maintenance_flag_change'
+] as const;
 
 type StageMetric = {
   stage: string;
@@ -21,36 +40,56 @@ type StageMetric = {
 
 export default async function PipelinePage() {
   const since24h = inLast24Hours();
+  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [recentTelemetry, recentFailures, recentImportExportFailures] = await Promise.all([
-    safeQuery(
-      () =>
-        prisma.pipelineTelemetry.findMany({
-          where: { createdAt: { gte: since24h }, stage: { in: [...PIPELINE_STAGES] } },
-          orderBy: { createdAt: 'desc' },
-          take: 1200
-        }),
-      []
-    ),
-    safeQuery(
-      () =>
-        prisma.pipelineTelemetry.findMany({
-          where: { status: 'failure', createdAt: { gte: since24h } },
-          orderBy: { createdAt: 'desc' },
-          take: 20
-        }),
-      []
-    ),
-    safeQuery(
-      () =>
-        prisma.pipelineTelemetry.findMany({
-          where: { status: 'failure', createdAt: { gte: since24h }, stage: { in: ['import', 'export'] } },
-          orderBy: { createdAt: 'desc' },
-          take: 10
-        }),
-      []
-    )
+  const [
+    recentTelemetryResult,
+    recentFailuresResult,
+    recentImportExportFailuresResult,
+    importFlagResult,
+    drainFlagResult,
+    failedBatchesResult,
+    recoveryAuditResult
+  ] = await Promise.allSettled([
+    prisma.pipelineTelemetry.findMany({
+      where: { createdAt: { gte: since24h }, stage: { in: [...PIPELINE_STAGES] } },
+      orderBy: { createdAt: 'desc' },
+      take: 1200
+    }),
+    prisma.pipelineTelemetry.findMany({ where: { status: 'failure', createdAt: { gte: since24h } }, orderBy: { createdAt: 'desc' }, take: 20 }),
+    prisma.pipelineTelemetry.findMany({
+      where: { status: 'failure', createdAt: { gte: since24h }, stage: { in: ['import', 'export'] } },
+      orderBy: { createdAt: 'desc' },
+      take: 10
+    }),
+    prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } }),
+    prisma.siteSetting.findUnique({ where: { key: 'pipeline_drain_mode' } }),
+    prisma.importBatch.findMany({
+      where: { createdAt: { gte: since7d }, OR: [{ errorCount: { gt: 0 } }, { status: { contains: 'FAIL', mode: 'insensitive' } }] },
+      orderBy: { createdAt: 'desc' },
+      take: 16
+    }),
+    prisma.pipelineTelemetry.findMany({ where: { stage: { in: [...RECOVERY_AUDIT_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 120 })
   ]);
+
+  const recentTelemetry = settledValue(recentTelemetryResult);
+  const recentFailures = settledValue(recentFailuresResult);
+  const recentImportExportFailures = settledValue(recentImportExportFailuresResult);
+  const failedBatches = settledValue(failedBatchesResult);
+  const recoveryAuditEvents = settledValue(recoveryAuditResult).map((row) => ({
+    id: row.id,
+    stage: row.stage,
+    status: row.status,
+    detail: row.detail,
+    createdAt: row.createdAt.toISOString()
+  }));
+
+  const telemetryLimited = [recentTelemetryResult, recentFailuresResult, recentImportExportFailuresResult, failedBatchesResult].some(
+    (result) => result.status === 'rejected'
+  );
+
+  const importEnabled = importFlagResult.status === 'fulfilled' ? importFlagResult.value?.value === 'true' : null;
+  const drainMode = drainFlagResult.status === 'fulfilled' ? drainFlagResult.value?.value === 'true' : null;
 
   const stageMetrics = PIPELINE_STAGES.map((stage): StageMetric => {
     const rows = recentTelemetry.filter((row) => row.stage === stage);
@@ -96,21 +135,39 @@ export default async function PipelinePage() {
   const failingCount = stageMetrics.filter((metric) => metric.health === 'failing').length;
   const degradedCount = stageMetrics.filter((metric) => metric.health === 'degraded').length;
 
+  const replayingSignal = recoveryAuditEvents.find((event) => event.stage === 'recovery_replay_request');
+  const blockedReplayReason = importEnabled === false ? 'Replay is blocked while imports are paused.' : drainMode ? 'Replay is blocked while drain mode is active.' : null;
+
+  const recoveryState = deriveRecoveryState({
+    importEnabled,
+    drainMode,
+    failingCount,
+    degradedCount,
+    replayingSignal,
+    telemetryLimited,
+    recentFailures: recentImportExportFailures.length
+  });
+
+  const replayEligibleRows = failedBatches.map((batch) => ({
+    id: batch.id,
+    label: `Batch ${batch.externalBatchId}`,
+    failureReason: batch.errorCount > 0 ? `${batch.errorCount} errors captured` : `Status: ${batch.status}`,
+    stage: 'import/export',
+    createdAt: batch.createdAt.toISOString(),
+    scope: 'batch' as const,
+    blockedReason: blockedReplayReason
+  }));
+
   return (
     <div className="stack">
-      <PageHeader title="Pipeline" description="Incident localization view for stage health, retries, latency, and failure hotspots." />
+      <PageHeader title="Pipeline" description="Incident-response view for recovery state, failed work, replay eligibility, and scoped controls." />
 
-      {failingCount > 0 ? (
-        <AlertBanner tone="danger" title="Blocking failure state">
-          {failingCount} stages are failing. Use the stage cards below to localize the fault path quickly.
-        </AlertBanner>
-      ) : degradedCount > 0 ? (
-        <AlertBanner tone="warning" title="Partial failure / degraded state">
-          {degradedCount} stages are degraded. Some telemetry signals are healthy while others need investigation.
-        </AlertBanner>
-      ) : (
-        <AlertBanner tone="success" title="Healthy or idle state">No stage is currently marked failing from the last-24h sample.</AlertBanner>
-      )}
+      <RecoveryStateBanner
+        state={recoveryState}
+        inferred={telemetryLimited || drainMode === null}
+        context={`Imports: ${importEnabled === null ? 'unknown' : importEnabled ? 'enabled' : 'paused'} · Drain mode: ${drainMode === null ? 'unknown' : drainMode ? 'on' : 'off'} · Failing stages: ${failingCount} · Degraded stages: ${degradedCount}`}
+        telemetryGap={telemetryLimited ? 'One or more telemetry datasets could not be loaded. Use caution before replay.' : undefined}
+      />
 
       <div className="pipeline-grid" role="region" aria-label="Pipeline stage cards">
         {stageMetrics.map((metric) => (
@@ -125,6 +182,35 @@ export default async function PipelinePage() {
           />
         ))}
       </div>
+
+      <div className="two-col">
+        <SectionCard title="Recent failed work" subtitle="Most recent failures with links for root-cause analysis.">
+          <ul className="timeline" aria-label="Recent failed work list">
+            {recentImportExportFailures.map((row) => (
+              <li key={row.id}>
+                <p>
+                  <strong>{row.stage}</strong> <StatusBadge tone="danger">Failure</StatusBadge>
+                </p>
+                <p className="muted">{row.detail ?? 'No detail captured.'}</p>
+                <p className="kpi-note">{row.createdAt.toLocaleString()} · Config v{row.configVersion ?? '—'}</p>
+                <Link className="inline-link" href={`/investigations?stage=${encodeURIComponent(row.stage)}&error=${encodeURIComponent(row.detail ?? '')}`}>
+                  Open investigation context
+                </Link>
+              </li>
+            ))}
+            {recentImportExportFailures.length === 0 ? <li className="muted">No import/export failures in the last 24 hours.</li> : null}
+          </ul>
+        </SectionCard>
+
+        <ReplayEligibilityList rows={replayEligibleRows} />
+      </div>
+
+      <RecoveryActionPanel
+        importEnabled={importEnabled}
+        drainMode={drainMode}
+        blockedReplay={blockedReplayReason}
+        telemetryLimited={telemetryLimited}
+      />
 
       <div className="two-col">
         <SectionCard title="Failure hotspots" subtitle="Top failing stages and top error categories.">
@@ -147,7 +233,7 @@ export default async function PipelinePage() {
                       <strong>{category || 'unknown'}</strong>
                     </span>
                     <Link className="inline-link" href={`/investigations?error=${encodeURIComponent(category)}`}>
-                      {count} failures → investigate
+                    {count} failures → investigate
                     </Link>
                   </li>
                 ))}
@@ -157,26 +243,39 @@ export default async function PipelinePage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Recent import/export failures" subtitle="Most recent failures for import and export stages.">
-          <ul className="timeline">
-            {recentImportExportFailures.map((row) => (
-              <li key={row.id}>
-                <p>
-                  <strong>{row.stage}</strong> <StatusBadge tone="danger">failure</StatusBadge>
-                </p>
-                <p className="muted">{row.detail ?? 'No detail captured.'}</p>
-                <p className="kpi-note">{row.createdAt.toLocaleString()} · Config v{row.configVersion ?? '—'}</p>
-                <Link className="inline-link" href={`/investigations?stage=${encodeURIComponent(row.stage)}&error=${encodeURIComponent(row.detail ?? '')}`}>
-                  Open in investigations
-                </Link>
-              </li>
-            ))}
-            {recentImportExportFailures.length === 0 ? <li className="muted">No import/export failures in the last 24 hours.</li> : null}
-          </ul>
+        <SectionCard title="Recovery audit feed" subtitle="Who triggered recovery actions, why, and with what scope/outcome.">
+          <p className="kpi-note"><a href="#audit-log" className="inline-link">Jump to filtered recovery audit log</a></p>
+          <RecoveryAuditFeed events={recoveryAuditEvents} hasGaps={telemetryLimited || recoveryAuditEvents.some((event) => !event.detail)} />
         </SectionCard>
       </div>
     </div>
   );
+}
+
+function deriveRecoveryState({
+  importEnabled,
+  drainMode,
+  failingCount,
+  degradedCount,
+  replayingSignal,
+  telemetryLimited,
+  recentFailures
+}: {
+  importEnabled: boolean | null;
+  drainMode: boolean | null;
+  failingCount: number;
+  degradedCount: number;
+  replayingSignal: { createdAt: string } | undefined;
+  telemetryLimited: boolean;
+  recentFailures: number;
+}) {
+  if (telemetryLimited && importEnabled === null && drainMode === null) return 'unknown' as const;
+  if (importEnabled === false) return 'paused' as const;
+  if (drainMode) return 'draining' as const;
+  if (replayingSignal && Date.now() - new Date(replayingSignal.createdAt).getTime() < 60 * 60 * 1000) return 'replaying' as const;
+  if (failingCount > 0) return 'degraded' as const;
+  if (degradedCount > 0 || recentFailures > 0) return 'partially_recovered' as const;
+  return 'recovered' as const;
 }
 
 function inferErrorCategory(detail?: string | null) {
@@ -208,12 +307,8 @@ function findStringValue(metadata: unknown, key: string): string | null {
   return typeof value === 'string' ? value : null;
 }
 
-async function safeQuery<T>(query: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await query();
-  } catch {
-    return fallback;
-  }
+function settledValue<T>(result: PromiseSettledResult<T>): T {
+  return result.status === 'fulfilled' ? result.value : ([] as unknown as T);
 }
 
 function inLast24Hours() {

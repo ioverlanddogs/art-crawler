@@ -24,3 +24,10 @@ export * from './ModelSummaryCard';
 export * from './types';
 
 export * from './moderation';
+
+export * from './RecoveryStateBadge';
+export * from './RecoveryStateBanner';
+export * from './ReplayScopeSummary';
+export * from './RecoveryActionPanel';
+export * from './ReplayEligibilityList';
+export * from './RecoveryAuditFeed';
