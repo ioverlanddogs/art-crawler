@@ -25,6 +25,9 @@ export * from './types';
 
 export * from './moderation';
 
+export * from './intake/IntakeForm';
+export * from './intake/IntakeJobStatusBadge';
+
 export * from './RecoveryStateBadge';
 export * from './RecoveryStateBanner';
 export * from './ReplayScopeSummary';
