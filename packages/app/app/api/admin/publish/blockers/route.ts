@@ -12,7 +12,7 @@ export async function GET() {
   }
 
   const events = await prisma.event.findMany({
-    where: { publishStatus: { in: ['ready', 'draft'] } },
+    where: { publishStatus: { in: ['ready', 'unpublished'] } },
     include: {
       proposedChangeSets: {
         where: { reviewStatus: 'approved' },

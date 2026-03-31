@@ -12,7 +12,7 @@ export default async function PublishQueuePage({ searchParams }: { searchParams?
   const scopeContext = resolveScopeContext(searchParams);
   const [events, recentBatches, reviewers] = await Promise.all([
     prisma.event.findMany({
-      where: { publishStatus: { in: ['ready', 'draft'] } },
+      where: { publishStatus: { in: ['ready', 'unpublished'] } },
       include: {
         proposedChangeSets: {
           where: { reviewStatus: 'approved' },

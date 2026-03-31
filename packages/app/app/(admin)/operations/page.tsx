@@ -15,7 +15,7 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
     prisma.proposedChangeSet.groupBy({ by: ['assignedReviewerId'], where: { dueAt: { lt: now }, reviewStatus: { in: ['draft', 'in_review'] } }, _count: { _all: true } }),
     prisma.proposedChangeSet.groupBy({ by: ['assignedReviewerId'], where: { escalationLevel: { gt: 0 }, reviewStatus: { in: ['draft', 'in_review'] } }, _count: { _all: true } }),
     prisma.proposedChangeSet.findMany({ where: { reviewedAt: { gte: since7d, not: null }, assignedReviewerId: { not: null } }, select: { assignedReviewerId: true, createdAt: true, reviewedAt: true }, take: 1200 }),
-    prisma.event.groupBy({ by: ['assignedReviewerId'], where: { publishStatus: { in: ['ready', 'draft'] }, assignedReviewerId: { not: null } }, _count: { _all: true } }),
+    prisma.event.groupBy({ by: ['assignedReviewerId'], where: { publishStatus: { in: ['ready', 'unpublished'] }, assignedReviewerId: { not: null } }, _count: { assignedReviewerId: true } }),
     prisma.duplicateCandidate.groupBy({ by: ['assignedReviewerId'], where: { resolutionStatus: 'unresolved' }, _count: { _all: true } })
   ]);
 
@@ -43,10 +43,10 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
       <div className="two-col">
         <SectionCard title="Top blocker owners">
           <ul className="timeline">
-            {scopedBlockers.sort((a, b) => b._count._all - a._count._all).slice(0, 8).map((row) => (
+            {scopedBlockers.sort((a, b) => b._count.assignedReviewerId - a._count.assignedReviewerId).slice(0, 8).map((row) => (
               <li key={`blocker-${row.assignedReviewerId ?? 'unassigned'}`}>
                 <strong>{nameFor(row.assignedReviewerId)}</strong>
-                <p className="kpi-note">{row._count._all} publish blockers</p>
+                <p className="kpi-note">{row._count.assignedReviewerId} publish blockers</p>
               </li>
             ))}
           </ul>

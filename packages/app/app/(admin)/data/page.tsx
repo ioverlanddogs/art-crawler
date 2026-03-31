@@ -15,7 +15,13 @@ export default async function DataPage({ searchParams }: { searchParams?: Record
     prisma.ingestExtractedEvent.groupBy({ by: ['confidenceBand'], _count: { confidenceBand: true }, where: { createdAt: { gte: since } } }),
     prisma.pipelineTelemetry.findMany({ where: { createdAt: { gte: since } }, select: { stage: true, status: true, detail: true, metadata: true, createdAt: true } }),
     prisma.duplicateCandidate.groupBy({ by: ['source', 'resolutionStatus'], _count: { _all: true }, where: { createdAt: { gte: since } } }),
-    prisma.pipelineTelemetry.groupBy({ by: ['entityId'], _count: { _all: true }, where: { stage: { contains: 'rollback' }, createdAt: { gte: since }, entityId: { not: null } }, orderBy: { _count: { _all: 'desc' } }, take: 8 })
+    prisma.pipelineTelemetry.groupBy({
+      by: ['entityId'],
+      _count: { entityId: true },
+      where: { stage: { contains: 'rollback' }, createdAt: { gte: since }, entityId: { not: null } },
+      orderBy: { _count: { entityId: 'desc' } },
+      take: 8
+    })
   ]);
 
   const confidenceDrift = aggregateConfidenceDrift(
@@ -57,7 +63,7 @@ export default async function DataPage({ searchParams }: { searchParams?: Record
         <SectionCard title="Duplicate generation rate by source" subtitle="Unresolved, false-positive, and separate-record trends by source.">
           <DataTable
             rows={duplicateBySource}
-            rowKey={(row: any, idx: number) => `${row.source ?? 'unknown'}-${row.resolutionStatus}-${idx}`}
+            rowKey={(row: any) => `${row.source ?? 'unknown'}-${row.resolutionStatus}`}
             emptyState={<EmptyState title="No duplicate data" description="No duplicate candidates found in selected window." />}
             columns={[
               { key: 'source', header: 'Source', render: (row: any) => row.source ?? 'unknown' },
@@ -71,11 +77,11 @@ export default async function DataPage({ searchParams }: { searchParams?: Record
       <SectionCard title="Rollback instability by source/reviewer" subtitle="Top rollback-heavy entities in selected window.">
         <DataTable
           rows={rollbackBySource}
-          rowKey={(row: any, idx: number) => `${row.entityId ?? 'unknown'}-${idx}`}
+          rowKey={(row: any) => `${row.entityId ?? 'unknown'}`}
           emptyState={<EmptyState title="No rollback telemetry" description="No rollback events in selected window." />}
           columns={[
             { key: 'entity', header: 'Entity', render: (row: any) => row.entityId ?? 'unknown' },
-            { key: 'count', header: 'Rollback events', render: (row: any) => row._count._all }
+            { key: 'count', header: 'Rollback events', render: (row: any) => row._count.entityId }
           ]}
         />
       </SectionCard>
