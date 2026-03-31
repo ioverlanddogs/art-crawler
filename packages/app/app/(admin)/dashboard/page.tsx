@@ -15,6 +15,8 @@ import {
   WorkloadBalanceCard
 } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import { isAiExtractionEnabled } from '@/lib/env';
+import { Prisma } from '@/lib/prisma-client';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +35,7 @@ export default async function DashboardPage() {
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry] =
+  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry, extractionWithEvidence, extractionTotal, eventsReadyToPublish, eventsPublishedThisWeek] =
     (await Promise.all([
       safeQuery(() => prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { activatedAt: 'desc' } }), null),
       safeQuery(() => prisma.modelVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { promotedAt: 'desc' } }), null),
@@ -84,7 +86,11 @@ export default async function DashboardPage() {
       safeQuery(
         () => prisma.pipelineTelemetry.findMany({ where: { createdAt: { gte: since7d } }, select: { stage: true, status: true, createdAt: true } }),
         []
-      )
+      ),
+      safeQuery(() => prisma.extractionRun.count({ where: { evidenceJson: { not: Prisma.AnyNull } } }), 0),
+      safeQuery(() => prisma.extractionRun.count(), 0),
+      safeQuery(() => prisma.event.count({ where: { publishStatus: 'ready' } }), 0),
+      safeQuery(() => prisma.event.count({ where: { publishStatus: 'published', publishedAt: { gte: since7d } } }), 0)
     ])) as any;
 
   const topFailingStage = failureByStage[0]?.stage ?? null;
@@ -122,6 +128,7 @@ export default async function DashboardPage() {
   const replayEvents7d = weekTelemetry.filter((row: any) => row.stage.includes('recovery_replay')).length;
   const automationExceptions7d = weekTelemetry.filter((row: any) => row.stage.includes('automation') && row.status !== 'success').length;
   const mttrSnapshot = failure24h === 0 ? 'No open failures in sample' : `${Math.max(15, Math.round((oldestPendingMinutes ?? 60) / 2))}m inferred`;
+  const evidenceCoveragePercent = extractionTotal > 0 ? Math.round((extractionWithEvidence / extractionTotal) * 100) : null;
 
   const teams = [
     { team: 'Moderation Team A', open: Math.ceil(backlogStats.pendingTotal * 0.45), atRisk: Math.ceil((failure24h || 1) / 3), overloaded: backlogStats.pendingTotal > 40 },
@@ -285,6 +292,39 @@ export default async function DashboardPage() {
         </SectionCard>
         <WorkloadBalanceCard teams={teams} />
       </div>
+
+      <SectionCard title="Data health" subtitle="Extraction evidence and publish throughput at a glance.">
+        <div className="stats-grid">
+          <div>
+            <p className="muted">Extractions with evidence</p>
+            <p>
+              <strong>{evidenceCoveragePercent == null ? 'No extractions yet' : `${evidenceCoveragePercent}%`}</strong>
+              {evidenceCoveragePercent == null ? null : ` (${extractionWithEvidence}/${extractionTotal})`}
+            </p>
+          </div>
+          <div>
+            <p className="muted">Events ready to publish</p>
+            <p>
+              <strong>{eventsReadyToPublish}</strong>{' '}
+              <Link href="/publish" className="inline-link">
+                Open publish queue
+              </Link>
+            </p>
+          </div>
+          <div>
+            <p className="muted">Published this week</p>
+            <p>
+              <strong>{eventsPublishedThisWeek}</strong>
+            </p>
+          </div>
+          <div>
+            <p className="muted">AI extraction active</p>
+            <p>
+              <strong>{isAiExtractionEnabled() ? 'Yes' : 'Stub mode'}</strong>
+            </p>
+          </div>
+        </div>
+      </SectionCard>
 
       <HandoffNotePanel
         inferred

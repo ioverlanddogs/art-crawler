@@ -21,7 +21,8 @@ describe('runIntake', () => {
     sourceDocument: { create: vi.fn(), update: vi.fn() },
     ingestionJob: { create: vi.fn(), update: vi.fn() },
     extractionRun: { create: vi.fn() },
-    proposedChangeSet: { create: vi.fn() }
+    proposedChangeSet: { create: vi.fn() },
+    pipelineTelemetry: { create: vi.fn() }
   } as any;
 
   beforeEach(() => {
@@ -33,6 +34,7 @@ describe('runIntake', () => {
     prismaMock.sourceDocument.update.mockResolvedValue({ id: 'sd-1' });
     prismaMock.extractionRun.create.mockResolvedValue({ id: 'er-1' });
     prismaMock.proposedChangeSet.create.mockResolvedValue({ id: 'pcs-1' });
+    prismaMock.pipelineTelemetry.create.mockResolvedValue({ id: 'pt-1' });
 
     fetchSourceMock.mockResolvedValue({
       finalUrl: 'https://example.com/event',

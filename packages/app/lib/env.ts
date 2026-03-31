@@ -19,3 +19,11 @@ export function getAppBaseUrl(): string {
 export function getImportSecretFromEnv(): string | undefined {
   return process.env[CANONICAL_IMPORT_SECRET_ENV] ?? process.env[LEGACY_IMPORT_SECRET_ENV];
 }
+
+export function getAnthropicApiKey(): string | undefined {
+  return process.env.ANTHROPIC_API_KEY;
+}
+
+export function isAiExtractionEnabled(): boolean {
+  return !!process.env.ANTHROPIC_API_KEY;
+}

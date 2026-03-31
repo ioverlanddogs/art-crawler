@@ -95,10 +95,26 @@ export async function runIntake(
       data: { status: 'parsing', updatedAt: new Date() }
     });
 
-    const extractionResult = await extractFields({
-      extractedText: fetchResult.extractedText,
-      sourceUrl: fetchResult.finalUrl
-    });
+    let extractionResult: Awaited<ReturnType<typeof extractFields>>;
+    try {
+      extractionResult = await extractFields({
+        extractedText: fetchResult.extractedText,
+        sourceUrl: fetchResult.finalUrl
+      });
+    } catch (error: unknown) {
+      await prisma.pipelineTelemetry.create({
+        data: {
+          stage: 'ai_extraction',
+          status: 'failure',
+          entityId: sourceDocument.id,
+          entityType: 'SourceDocument',
+          metadata: {
+            error: error instanceof Error ? error.message : 'unknown_error'
+          }
+        }
+      });
+      throw error;
+    }
 
     const extractionRun = await prisma.extractionRun.create({
       data: {
@@ -109,6 +125,24 @@ export async function runIntake(
         confidenceJson: extractionResult.confidenceJson as Prisma.InputJsonValue,
         evidenceJson: extractionResult.evidenceJson as Prisma.InputJsonValue,
         warningsJson: extractionResult.warningsJson as Prisma.InputJsonValue
+      }
+    });
+
+    const usage = (extractionResult as Awaited<ReturnType<typeof extractFields>> & {
+      usage?: { inputTokens?: number; outputTokens?: number };
+    }).usage;
+
+    await prisma.pipelineTelemetry.create({
+      data: {
+        stage: 'ai_extraction',
+        status: 'success',
+        entityId: sourceDocument.id,
+        entityType: 'SourceDocument',
+        metadata: {
+          inputTokens: usage?.inputTokens,
+          outputTokens: usage?.outputTokens,
+          model: 'claude-haiku-4-5-20251001'
+        }
       }
     });
 
