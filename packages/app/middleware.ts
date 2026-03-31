@@ -1,16 +1,27 @@
-export { default } from 'next-auth/middleware';
+import { withAuth } from 'next-auth/middleware';
 
-const ADMIN_UI_MATCHERS = [
-  '/dashboard/:path*',
-  '/moderation/:path*',
-  '/pipeline/:path*',
-  '/data/:path*',
-  '/discovery/:path*',
-  '/config/:path*',
-  '/system/:path*',
-  '/investigations/:path*'
-] as const;
+export default withAuth({
+  pages: {
+    signIn: '/login'
+  },
+  callbacks: {
+    authorized: ({ token }) => {
+      if (!token) return false;
+      return token.status === 'ACTIVE';
+    }
+  }
+});
 
 export const config = {
-  matcher: [...ADMIN_UI_MATCHERS, '/api/admin/:path*']
+  matcher: [
+    '/dashboard/:path*',
+    '/moderation/:path*',
+    '/pipeline/:path*',
+    '/data/:path*',
+    '/discovery/:path*',
+    '/config/:path*',
+    '/system/:path*',
+    '/investigations/:path*',
+    '/api/admin/:path*'
+  ]
 };
