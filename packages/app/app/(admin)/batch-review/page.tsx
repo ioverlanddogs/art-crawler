@@ -4,6 +4,7 @@ import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
+import { recommendReviewActions } from '@/lib/admin/triage-recommendations';
 
 export const dynamic = 'force-dynamic';
 
@@ -69,16 +70,32 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
                   <th>Source URL</th>
                   <th>Created</th>
                   <th>Owner</th>
+                  <th>AI triage recommendation</th>
                   <th>Bulk actions</th>
                 </tr>
               </thead>
               <tbody>
                 {group.records.slice(0, 30).map((row) => (
+                  (() => {
+                    const unresolvedDupes = row.duplicateCandidates.filter((candidate) => candidate.resolutionStatus === 'unresolved' || candidate.unresolvedBlockerCount > 0).length;
+                    const lowConfidence = row.fieldReviews.filter((review) => (review.confidence ?? 1) < 0.75).length;
+                    const recommendations = recommendReviewActions({
+                      unresolvedDuplicateCount: unresolvedDupes,
+                      lowConfidenceCount: lowConfidence,
+                      unreviewedCount: Math.max(0, Object.keys((row as { proposedDataJson?: object | null }).proposedDataJson ?? {}).length - row.fieldReviews.length),
+                      conflictCount: unresolvedDupes,
+                      staleHours: Math.max(0, (Date.now() - row.createdAt.getTime()) / 3600000)
+                    });
+                    return (
                   <tr key={row.id}>
                     <td><code>{row.id}</code></td>
                     <td>{row.sourceDocument.sourceUrl}</td>
                     <td>{row.createdAt.toLocaleString()}</td>
                     <td>{row.assignedReviewerId ?? 'unassigned'} · {row.slaState}</td>
+                    <td>
+                      <p className="kpi-note">{recommendations[0]?.summary}</p>
+                      <p className="muted">Confidence {Math.round((recommendations[0]?.confidence ?? 0) * 100)}%</p>
+                    </td>
                     <td>
                       <div className="filters-row">
                         <Link className="action-button variant-secondary" href={withScopeQuery(`/workbench/${row.id}`, scopeContext.scope)}>Assign</Link>
@@ -90,6 +107,8 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
                       </div>
                     </td>
                   </tr>
+                    );
+                  })()
                 ))}
               </tbody>
             </table>

@@ -11,8 +11,20 @@ const OPTIONS = [
   { label: 'manual override', status: 'resolved_merge' }
 ] as const;
 
-export function DuplicateDecisionPanel({ candidateId }: { candidateId: string }) {
-  const [strategy, setStrategy] = useState<(typeof OPTIONS)[number]['label']>('enrich missing fields only');
+export function DuplicateDecisionPanel({
+  candidateId,
+  recommendedAction
+}: {
+  candidateId: string;
+  recommendedAction?: 'merge_fields_only' | 'false_positive' | 'separate_record';
+}) {
+  const defaultStrategy: (typeof OPTIONS)[number]['label'] =
+    recommendedAction === 'separate_record'
+      ? 'create separate record'
+      : recommendedAction === 'false_positive'
+        ? 'manual override'
+        : 'enrich missing fields only';
+  const [strategy, setStrategy] = useState<(typeof OPTIONS)[number]['label']>(defaultStrategy);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const router = useRouter();

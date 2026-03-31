@@ -4,6 +4,7 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog, SectionCard } from '@/components/admin';
 import { AssignmentControls } from '@/components/admin/AssignmentControls';
+import { recommendReviewActions } from '@/lib/admin/triage-recommendations';
 
 type FieldDecision = 'accepted' | 'edited' | 'rejected' | 'uncertain' | null;
 type DiffFieldState = 'added' | 'updated' | 'unchanged' | 'conflicting' | 'rejected';
@@ -92,6 +93,17 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
     [data.proposedDataJson]
   );
   const focusedField = fields[focusedIndex]?.fieldPath ?? null;
+  const reviewRecommendations = useMemo(
+    () =>
+      recommendReviewActions({
+        unresolvedDuplicateCount: data.validationSummary.blockers.filter((blocker) => blocker.toLowerCase().includes('duplicate')).length,
+        lowConfidenceCount: data.fieldReviews.filter((fieldReview) => (fieldReview.confidence ?? 1) < 0.75).length,
+        unreviewedCount: data.fieldReviews.filter((fieldReview) => !fieldReview.decision).length,
+        conflictCount: data.diffResult.fields.filter((field) => field.state === 'conflicting').length,
+        staleHours: Math.max(0, (Date.now() - new Date(data.sourceDocument.fetchedAt ?? Date.now()).getTime()) / 3600000)
+      }),
+    [data]
+  );
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -259,6 +271,16 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
       <SectionCard title="Assignment + SLA" subtitle="Explicit ownership controls for this workbench item.">
         <p className="kpi-note">Current owner: {data.assignedReviewerId ?? 'unassigned'} · SLA: {data.slaState ?? 'unassigned'} · Escalation: L{data.escalationLevel ?? 0}</p>
         <AssignmentControls endpoint={`/api/admin/workbench/${data.id}/assignment`} reviewers={data.reviewers} currentAssigneeId={data.assignedReviewerId ?? null} />
+      </SectionCard>
+      <SectionCard title="AI-assisted triage recommendations" subtitle="Recommendations only: all moderation and publish actions remain human-controlled.">
+        <ul className="timeline">
+          {reviewRecommendations.map((recommendation) => (
+            <li key={recommendation.action}>
+              <strong>{recommendation.summary}</strong>
+              <p className="kpi-note">Confidence {Math.round(recommendation.confidence * 100)}% · {recommendation.rationale.join(' ')}</p>
+            </li>
+          ))}
+        </ul>
       </SectionCard>
       <div className="workbench-grid">
         <SourceEvidencePanel

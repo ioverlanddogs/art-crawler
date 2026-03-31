@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeader, SectionCard } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import { recommendDuplicateOutcome } from '@/lib/admin/triage-recommendations';
 import { DuplicateDecisionPanel } from './DuplicateDecisionPanel';
 
 export const dynamic = 'force-dynamic';
@@ -35,6 +36,14 @@ export default async function DuplicateComparePage({ params }: { params: { candi
     : {};
   const allFields = [...new Set([...Object.keys(proposal), ...Object.keys(canonical)])];
   const corroborationByField = asRecord(candidate.fieldCorroborationJson);
+  const duplicateRecommendation = recommendDuplicateOutcome({
+    matchConfidence: candidate.matchConfidence,
+    corroborationSourceCount: candidate.corroborationSourceCount,
+    corroborationConfidence: candidate.corroborationConfidence,
+    conflictingSourceCount: candidate.conflictingSourceCount,
+    unresolvedBlockerCount: candidate.unresolvedBlockerCount,
+    hasCanonicalTarget: Boolean(candidate.canonicalEventId)
+  });
 
   return (
     <div className="stack">
@@ -61,7 +70,10 @@ export default async function DuplicateComparePage({ params }: { params: { candi
         </SectionCard>
 
         <SectionCard title="Merge decision panel" subtitle={`Current status: ${candidate.resolutionStatus}`}>
-          <DuplicateDecisionPanel candidateId={candidate.id} />
+          <p className="muted">{duplicateRecommendation.recommendation.summary}</p>
+          <p className="kpi-note">{duplicateRecommendation.confidenceExplanation}</p>
+          <p className="kpi-note">{duplicateRecommendation.corroborationExplanation}</p>
+          <DuplicateDecisionPanel candidateId={candidate.id} recommendedAction={duplicateRecommendation.recommendation.action} />
         </SectionCard>
       </div>
 
