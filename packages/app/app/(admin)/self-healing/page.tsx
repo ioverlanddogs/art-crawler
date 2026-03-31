@@ -1,6 +1,7 @@
 import { AlertBanner, PageHeader, SectionCard, StatusBadge } from '@/components/admin';
 import { prisma } from '@/lib/db';
 import Link from 'next/link';
+import { evaluateGovernancePolicies } from '@/lib/admin/governance-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,6 +87,19 @@ export default async function SelfHealingPage() {
   const reversals = events.filter((event) => event.event === 'false_quarantine_reversed');
   const overrides = reversals.concat(events.filter((event) => event.reason?.startsWith('manual_override:')));
 
+  const policySignals = events.slice(0, 20).map((event) =>
+    evaluateGovernancePolicies({
+      scope: { scope: 'source-group' },
+      actorId: event.actor,
+      unresolvedPublishBlockers: 0,
+      sourceFailureRate: event.event === 'source_quarantined' ? 0.6 : 0.2,
+      staleEvidenceHours: event.event === 'source_quarantined' ? 80 : 10,
+      rollbackRate: 0,
+      overdueSlaHours: 0,
+      duplicateSeverity: 'low'
+    })
+  );
+
   return (
     <div className="stack">
       <PageHeader
@@ -164,6 +178,19 @@ export default async function SelfHealingPage() {
             </li>
           ))}
           {reversals.length === 0 ? <li className="muted">No reversals in this window.</li> : null}
+        </ul>
+      </SectionCard>
+
+
+      <SectionCard title="Policy automation signals" subtitle="Why containment/escalation policies fired for current source interventions.">
+        <ul className="timeline">
+          {policySignals.flatMap((result) => result.firedPolicies).slice(0, 15).map((policy, index) => (
+            <li key={`${policy.policyId}-${index}`}>
+              <strong>{policy.policyId}</strong> ({policy.severity}) · {policy.action}
+              <p className="kpi-note">{policy.reason}</p>
+            </li>
+          ))}
+          {policySignals.every((result) => result.firedPolicies.length === 0) ? <li className="muted">No policy triggers in this window.</li> : null}
         </ul>
       </SectionCard>
 

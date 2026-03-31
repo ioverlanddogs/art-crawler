@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { PageHeader, SectionCard } from '@/components/admin';
 import { prisma } from '@/lib/db';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
+import { scorePublishReadiness, simulateStagedRelease } from '@/lib/admin/publish-readiness';
+import { evaluateGovernancePolicies } from '@/lib/admin/governance-policy';
 import { ConfirmPublishPanel } from './ConfirmPublishPanel';
 import { RollbackPreviewPanel } from './RollbackPreviewPanel';
 
@@ -36,6 +38,53 @@ export default async function PublishDetailPage({ params }: { params: { eventId:
     duplicateCandidates: changeSet.duplicateCandidates
   });
 
+  const rollbackHistoryCount = versions.filter((version) => (version.changeSummary ?? '').toLowerCase().includes('rollback')).length;
+  const readinessScore = scorePublishReadiness({
+    proposedDataJson: asRecord(changeSet.proposedDataJson),
+    fieldReviews: changeSet.fieldReviews,
+    duplicateCandidates: changeSet.duplicateCandidates,
+    extractionCompleteness: Math.min(1, evidenceCoverage / Math.max(1, changedFields.length)),
+    sourcePerformance: 0.72,
+    trustTierScore: 0.7,
+    rollbackHistoryCount,
+    staleEvidenceHours: Math.max(0, (Date.now() - event.updatedAt.getTime()) / 3600000)
+  });
+
+  const simulation = simulateStagedRelease([
+    {
+      eventId: event.id,
+      title: event.title,
+      input: {
+        proposedDataJson: asRecord(changeSet.proposedDataJson),
+        fieldReviews: changeSet.fieldReviews,
+        duplicateCandidates: changeSet.duplicateCandidates,
+        extractionCompleteness: Math.min(1, evidenceCoverage / Math.max(1, changedFields.length)),
+        sourcePerformance: 0.72,
+        trustTierScore: 0.7,
+        rollbackHistoryCount,
+        staleEvidenceHours: Math.max(0, (Date.now() - event.updatedAt.getTime()) / 3600000)
+      }
+    }
+  ]);
+
+  const policies = evaluateGovernancePolicies({
+    scope: { scope: 'global' },
+    actorId: changeSet.reviewedByUserId,
+    unresolvedPublishBlockers: publishGate.blockers.length,
+    sourceFailureRate: 1 - 0.72,
+    staleEvidenceHours: Math.max(0, (Date.now() - event.updatedAt.getTime()) / 3600000),
+    rollbackRate: rollbackHistoryCount > 0 ? Math.min(1, rollbackHistoryCount / Math.max(1, versions.length)) : 0,
+    overdueSlaHours: Math.max(0, (Date.now() - event.updatedAt.getTime()) / 3600000),
+    duplicateSeverity:
+      readinessScore.blockerSeverityBreakdown.critical > 0
+        ? 'critical'
+        : readinessScore.blockerSeverityBreakdown.high > 0
+          ? 'high'
+          : readinessScore.blockerSeverityBreakdown.medium > 0
+            ? 'medium'
+            : 'low'
+  });
+
   return (
     <div className="stack">
       <PageHeader title="Confirm publish" description="Review readiness checks before releasing this event." />
@@ -47,6 +96,48 @@ export default async function PublishDetailPage({ params }: { params: { eventId:
           <Link href={`/audit?entityType=Event&entityId=${encodeURIComponent(event.id)}`} className="action-button variant-secondary">Open audit trail</Link>
           <Link href="/publish" className="action-button variant-secondary">Back to queue</Link>
         </div>
+      </SectionCard>
+
+      <SectionCard title="Publish readiness scoring">
+        <div className="stats-grid">
+          <article className="card"><h3>Readiness</h3><p>{readinessScore.publishReadinessScore}/100</p></article>
+          <article className="card"><h3>Risk</h3><p>{readinessScore.publishRiskScore}/100</p></article>
+          <article className="card"><h3>Confidence</h3><p>{readinessScore.releaseConfidence}</p></article>
+          <article className="card"><h3>Rollback risk</h3><p>{readinessScore.rollbackRiskIndicator}</p></article>
+        </div>
+        <ul className="timeline">
+          {readinessScore.factors.map((factor) => (
+            <li key={factor.key}>
+              <strong>{factor.label}</strong> ({factor.severity}) · {factor.contribution}
+              <p className="kpi-note">{factor.detail}</p>
+            </li>
+          ))}
+        </ul>
+      </SectionCard>
+
+      <SectionCard title="Staged release simulation">
+        <p className="muted">Non-destructive simulation only. Blockers still enforce publish boundaries.</p>
+        <ul className="timeline">
+          <li><strong>Publish-ready now:</strong> {simulation.publishReadyNow.includes(event.id) ? 'yes' : 'no'}</li>
+          <li><strong>Blocked now:</strong> {simulation.blockedNow.includes(event.id) ? 'yes' : 'no'}</li>
+          <li><strong>High-risk but publishable:</strong> {simulation.highRiskButPublishable.includes(event.id) ? 'yes' : 'no'}</li>
+          <li><strong>Rollback-prone:</strong> {simulation.rollbackProne.includes(event.id) ? 'yes' : 'no'}</li>
+        </ul>
+      </SectionCard>
+
+      <SectionCard title="Governance policy signals">
+        {policies.firedPolicies.length === 0 ? (
+          <p className="muted">No governance policies fired for this record.</p>
+        ) : (
+          <ul className="timeline">
+            {policies.firedPolicies.map((policy) => (
+              <li key={policy.policyId}>
+                <strong>{policy.policyId}</strong> ({policy.severity}) · action: {policy.action}
+                <p className="kpi-note">{policy.reason}</p>
+              </li>
+            ))}
+          </ul>
+        )}
       </SectionCard>
 
       <SectionCard title="Changed fields">
