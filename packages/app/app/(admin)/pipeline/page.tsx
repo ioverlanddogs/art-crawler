@@ -11,8 +11,10 @@ import {
   ScopeBadge,
   SlaBadge,
   SlaTimerCard,
+  StatCard,
   TrendSummaryCard
 } from '@/components/admin';
+import { aggregatePipelineFailures } from '@/lib/admin/data-health';
 import { prisma } from '@/lib/db';
 import Link from 'next/link';
 
@@ -145,6 +147,7 @@ export default async function PipelinePage() {
     errorCategoryMap.set(category, (errorCategoryMap.get(category) ?? 0) + 1);
   }
   const topErrorCategories = [...errorCategoryMap.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const healthRollup = aggregatePipelineFailures(recentTelemetry);
 
   const failingCount = stageMetrics.filter((metric) => metric.health === 'failing').length;
   const degradedCount = stageMetrics.filter((metric) => metric.health === 'degraded').length;
@@ -204,6 +207,16 @@ export default async function PipelinePage() {
           detail="Leadership throughput summary in current scope."
         />
       </div>
+      <SectionCard title="Pipeline + source health intelligence" subtitle="Failure-rate and retry risk signals for proactive triage.">
+        <div className="stats-grid">
+          <StatCard label="Failed extraction jobs" value={healthRollup.failedExtractionJobs} />
+          <StatCard label="Parser mismatch spike" value={healthRollup.parserFailureSpike} />
+          <StatCard label="response_too_large trend" value={healthRollup.oversizedPayloadFailures} />
+          <StatCard label="Unhealthy source skips" value={healthRollup.unhealthySourceSkips} />
+          <StatCard label="Queue congestion (stages > 40)" value={overdueQueueCount} />
+          <StatCard label="Retry hotspots" value={stageMetrics.filter((stage) => stage.retries > 5).length} />
+        </div>
+      </SectionCard>
 
       <div className="pipeline-grid" role="region" aria-label="Pipeline stage cards">
         {stageMetrics.map((metric) => (

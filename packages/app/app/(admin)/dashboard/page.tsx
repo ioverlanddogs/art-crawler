@@ -1,5 +1,7 @@
 import {
   AlertBanner,
+  DataTable,
+  EmptyState,
   ExecutiveKpiCard,
   FailureHotspotList,
   HandoffNotePanel,
@@ -10,10 +12,19 @@ import {
   SeverityBadge,
   SlaBadge,
   SlaTimerCard,
+  StatCard,
   StatusBadge,
   TrendSummaryCard,
   WorkloadBalanceCard
 } from '@/components/admin';
+import {
+  aggregateBlockerTrends,
+  aggregateConfidenceDrift,
+  aggregateHotspotSources,
+  aggregatePipelineFailures,
+  aggregateSourceLeaderboard,
+  calculateDuplicateBacklog
+} from '@/lib/admin/data-health';
 import { prisma } from '@/lib/db';
 import { isAiExtractionEnabled } from '@/lib/env';
 import { Prisma } from '@/lib/prisma-client';
@@ -35,7 +46,7 @@ export default async function DashboardPage() {
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry, extractionWithEvidence, extractionTotal, eventsReadyToPublish, eventsPublishedThisWeek, unresolvedDuplicates, unresolvedCorroborationConflicts] =
+  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry, extractionWithEvidence, extractionTotal, eventsReadyToPublish, eventsPublishedThisWeek, unresolvedDuplicates, unresolvedCorroborationConflicts, duplicateSnapshots, pipelineWindow, publishBlockerRows] =
     (await Promise.all([
       safeQuery(() => prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { activatedAt: 'desc' } }), null),
       safeQuery(() => prisma.modelVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { promotedAt: 'desc' } }), null),
@@ -92,7 +103,46 @@ export default async function DashboardPage() {
       safeQuery(() => prisma.event.count({ where: { publishStatus: 'ready' } }), 0),
       safeQuery(() => prisma.event.count({ where: { publishStatus: 'published', publishedAt: { gte: since7d } } }), 0),
       safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved' } }), 0),
-      safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved', OR: [{ conflictingSourceCount: { gt: 0 } }, { unresolvedBlockerCount: { gt: 0 } }] } }), 0)
+      safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved', OR: [{ conflictingSourceCount: { gt: 0 } }, { unresolvedBlockerCount: { gt: 0 } }] } }), 0),
+      safeQuery(
+        () =>
+          prisma.duplicateCandidate.findMany({
+            take: 1500,
+            orderBy: { createdAt: 'desc' },
+            select: {
+              source: true,
+              resolutionStatus: true,
+              matchConfidence: true,
+              unresolvedBlockerCount: true,
+              conflictingSourceCount: true,
+              createdAt: true,
+              proposedChangeSet: { select: { sourceDocument: { select: { sourceUrl: true } } } }
+            }
+          }),
+        []
+      ),
+      safeQuery(
+        () =>
+          prisma.pipelineTelemetry.findMany({
+            where: { createdAt: { gte: since24h } },
+            select: { stage: true, status: true, detail: true, metadata: true, createdAt: true }
+          }),
+        []
+      ),
+      safeQuery(
+        () =>
+          prisma.proposedChangeSet.findMany({
+            where: { reviewStatus: { in: ['draft', 'in_review'] } },
+            take: 600,
+            select: {
+              id: true,
+              sourceDocument: { select: { sourceUrl: true } },
+              fieldReviews: { select: { decision: true, confidence: true } },
+              duplicateCandidates: { select: { resolutionStatus: true, conflictingSourceCount: true, unresolvedBlockerCount: true } }
+            }
+          }),
+        []
+      )
     ])) as any;
 
   const topFailingStage = failureByStage[0]?.stage ?? null;
@@ -131,6 +181,58 @@ export default async function DashboardPage() {
   const automationExceptions7d = weekTelemetry.filter((row: any) => row.stage.includes('automation') && row.status !== 'success').length;
   const mttrSnapshot = failure24h === 0 ? 'No open failures in sample' : `${Math.max(15, Math.round((oldestPendingMinutes ?? 60) / 2))}m inferred`;
   const evidenceCoveragePercent = extractionTotal > 0 ? Math.round((extractionWithEvidence / extractionTotal) * 100) : null;
+  const duplicateSummary = calculateDuplicateBacklog(
+    duplicateSnapshots.map((row: any) => ({
+      source: row.source,
+      sourceUrl: row.proposedChangeSet?.sourceDocument?.sourceUrl ?? null,
+      resolutionStatus: row.resolutionStatus,
+      matchConfidence: row.matchConfidence,
+      unresolvedBlockerCount: row.unresolvedBlockerCount,
+      conflictingSourceCount: row.conflictingSourceCount,
+      createdAt: row.createdAt
+    }))
+  );
+  const sourceLeaderboard = aggregateSourceLeaderboard(
+    duplicateSnapshots.map((row: any) => ({
+      source: row.source,
+      sourceUrl: row.proposedChangeSet?.sourceDocument?.sourceUrl ?? null,
+      resolutionStatus: row.resolutionStatus,
+      matchConfidence: row.matchConfidence,
+      unresolvedBlockerCount: row.unresolvedBlockerCount,
+      conflictingSourceCount: row.conflictingSourceCount,
+      createdAt: row.createdAt
+    }))
+  ).slice(0, 6);
+  const hotspotUrls = aggregateHotspotSources(
+    duplicateSnapshots.map((row: any) => ({
+      source: row.source,
+      sourceUrl: row.proposedChangeSet?.sourceDocument?.sourceUrl ?? null,
+      resolutionStatus: row.resolutionStatus,
+      matchConfidence: row.matchConfidence,
+      unresolvedBlockerCount: row.unresolvedBlockerCount,
+      conflictingSourceCount: row.conflictingSourceCount,
+      createdAt: row.createdAt
+    }))
+  ).slice(0, 6);
+  const pipelineHealth = aggregatePipelineFailures(pipelineWindow);
+  const confidenceDrift = aggregateConfidenceDrift(
+    weekTelemetry
+      .filter((row: any) => row.stage === 'score')
+      .map((row: any) => ({ createdAt: row.createdAt, confidenceScore: Number((row as any).metadata?.confidenceScore ?? 50) }))
+  );
+  const blockerTrends = aggregateBlockerTrends(
+    publishBlockerRows.map((row: any) => {
+      const blockers: string[] = [];
+      const lowConfidenceAccepted = row.fieldReviews.filter((review: any) => review.decision === 'accepted' && typeof review.confidence === 'number' && review.confidence < 0.5).length;
+      const unresolvedDupes = row.duplicateCandidates.filter((candidate: any) => candidate.resolutionStatus === 'unresolved').length;
+      const corroborationConflicts = row.duplicateCandidates.filter((candidate: any) => candidate.conflictingSourceCount > 0 || candidate.unresolvedBlockerCount > 0).length;
+      if (row.fieldReviews.some((review: any) => !review.decision)) blockers.push('missing reviews');
+      if (unresolvedDupes > 0) blockers.push('unresolved duplicates');
+      if (corroborationConflicts > 0) blockers.push('corroboration conflicts');
+      if (lowConfidenceAccepted > 0) blockers.push('low-confidence required fields');
+      return { blockers, source: extractHost(row.sourceDocument?.sourceUrl) };
+    })
+  );
 
   const teams = [
     { team: 'Moderation Team A', open: Math.ceil(backlogStats.pendingTotal * 0.45), atRisk: Math.ceil((failure24h || 1) / 3), overloaded: backlogStats.pendingTotal > 40 },
@@ -335,6 +437,47 @@ export default async function DashboardPage() {
           </div>
         </div>
       </SectionCard>
+      <SectionCard title="Data Health Control Tower" subtitle="System-wide quality risk, duplicate pressure, confidence drift, and publish blocker intelligence.">
+        <div className="stats-grid">
+          <StatCard label="Publish blocked records" value={blockerTrends.blockerTotals} />
+          <StatCard label="Duplicate backlog >7d" value={duplicateSummary.agingBuckets.gt_7d} detail="Aging unresolved duplicate candidates" />
+          <StatCard label="Corroboration conflict backlog" value={unresolvedCorroborationConflicts} />
+          <StatCard label="False-positive duplicate rate" value={`${Math.round(duplicateSummary.falsePositiveRate * 100)}%`} />
+          <StatCard label="Parser failure spike (24h)" value={pipelineHealth.parserFailureSpike} />
+          <StatCard label="Oversized payload failures" value={pipelineHealth.oversizedPayloadFailures} />
+          <StatCard label="Unhealthy source skip rate" value={`${pipelineWindow.length ? Math.round((pipelineHealth.unhealthySourceSkips / pipelineWindow.length) * 100) : 0}%`} />
+          <StatCard label="Confidence drift" value={`${confidenceDrift.drift}%`} detail={`${confidenceDrift.previousAverage}% → ${confidenceDrift.currentAverage}%`} />
+        </div>
+        <div className="two-col">
+          <SectionCard title="Source reliability leaderboard" subtitle="Top duplicate-risk and reviewer-friction sources.">
+            <DataTable
+              rows={sourceLeaderboard}
+              rowKey={(row: any) => row.source}
+              emptyState={<EmptyState title="No source health data" description="Source leaderboard appears when duplicate candidates are present." />}
+              columns={[
+                { key: 'source', header: 'Source', render: (row: any) => row.source },
+                { key: 'unresolved', header: 'Unresolved', render: (row: any) => row.unresolved },
+                { key: 'risk', header: 'Avg duplicate risk', render: (row: any) => `${Math.round(row.averageDuplicateRisk * 100)}%` },
+                { key: 'fp', header: 'False-positive rate', render: (row: any) => `${Math.round(row.falsePositiveRate * 100)}%` },
+                { key: 'cta', header: 'Action', render: (row: any) => <Link className="inline-link" href={`/investigations?source=${encodeURIComponent(row.source)}`}>Open source investigations</Link> }
+              ]}
+            />
+          </SectionCard>
+          <SectionCard title="Duplicate hotspot URLs" subtitle="Top duplicate-generating URLs for immediate triage.">
+            <ul className="hotspot-list">
+              {hotspotUrls.map(([url, count]: [string, number]) => (
+                <li key={url} className="hotspot-item">
+                  <span>{url}</span>
+                  <Link href={`/duplicates?sourceUrl=${encodeURIComponent(url)}`} className="inline-link">
+                    {count} candidates → open duplicates queue
+                  </Link>
+                </li>
+              ))}
+              {hotspotUrls.length === 0 ? <li className="muted">No duplicate hotspots in the sampled window.</li> : null}
+            </ul>
+          </SectionCard>
+        </div>
+      </SectionCard>
 
       <HandoffNotePanel
         inferred
@@ -382,4 +525,13 @@ async function safeQuery<T>(query: () => Promise<T>, fallback: T): Promise<T> {
 
 function inLast24Hours() {
   return new Date(Date.now() - 24 * 60 * 60 * 1000);
+}
+
+function extractHost(url?: string | null) {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return null;
+  }
 }
