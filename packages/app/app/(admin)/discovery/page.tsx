@@ -19,7 +19,7 @@ export default async function DiscoveryPage() {
       select: { id: true, title: true, source: true, createdAt: true, confidenceScore: true }
     }),
     prisma.ingestExtractedEvent.count({ where: { createdAt: { gte: startOfDayUtc() } } }),
-    prisma.duplicateCandidate.groupBy({ by: ['source'], _count: { _all: true }, where: { createdAt: { gte: since24h } }, orderBy: { _count: { _all: 'desc' } }, take: 10 }),
+    prisma.duplicateCandidate.groupBy({ by: ['source'], _count: { source: true }, where: { createdAt: { gte: since24h } }, orderBy: { _count: { source: 'desc' } }, take: 10 }),
     prisma.pipelineTelemetry.findMany({ where: { createdAt: { gte: since24h } }, select: { stage: true, status: true, detail: true, metadata: true, createdAt: true } })
   ]);
   const pipelineHealth = aggregatePipelineFailures(pipelineRows);
@@ -32,7 +32,7 @@ export default async function DiscoveryPage() {
         <StatCard label="Recent Window" value={recentCandidates.length} detail="Most recent sampled rows" />
         <StatCard label="High Confidence" value={recentCandidates.filter((c: DiscoveryRow) => c.confidenceScore >= 70).length} />
         <StatCard label="Low Confidence" value={recentCandidates.filter((c: DiscoveryRow) => c.confidenceScore < 40).length} />
-        <StatCard label="Duplicate candidate yield /24h" value={duplicateYieldBySource.reduce((acc, row) => acc + row._count._all, 0)} />
+        <StatCard label="Duplicate candidate yield /24h" value={duplicateYieldBySource.reduce((acc, row) => acc + row._count.source, 0)} />
         <StatCard label="Parser failure spike /24h" value={pipelineHealth.parserFailureSpike} />
       </div>
 
@@ -66,7 +66,7 @@ export default async function DiscoveryPage() {
             emptyState={<EmptyState title="No duplicate hotspot sources" description="No duplicate candidates were created in the last 24 hours." />}
             columns={[
               { key: 'source', header: 'Source', render: (row: any) => row.source ?? 'unknown' },
-              { key: 'count', header: 'Duplicate candidates', render: (row: any) => row._count._all },
+              { key: 'count', header: 'Duplicate candidates', render: (row: any) => row._count.source },
               {
                 key: 'cta',
                 header: 'Action',

@@ -42,5 +42,8 @@ describe('batch publish blockers', () => {
     const payload = await response.json();
     expect(payload.data).toHaveLength(1);
     expect(payload.clusters).toEqual([{ blocker: 'duplicate unresolved', count: 1, eventIds: ['evt-1'] }]);
+    expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { publishStatus: { in: ['ready', 'unpublished'] } } })
+    );
   });
 });

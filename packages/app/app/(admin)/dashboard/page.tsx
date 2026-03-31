@@ -150,8 +150,18 @@ export default async function DashboardPage({ searchParams }: { searchParams?: R
     safeQuery(() => prisma.proposedChangeSet.count({ where: { reviewStatus: { in: ['draft', 'in_review'] }, dueAt: { lt: new Date() } } }), 0),
     safeQuery(() => prisma.proposedChangeSet.findFirst({ where: { reviewStatus: { in: ['draft', 'in_review'] }, assignedReviewerId: null }, orderBy: { createdAt: 'asc' }, select: { id: true, createdAt: true } }), null),
     safeQuery(() => prisma.proposedChangeSet.findMany({ where: { reviewedAt: { gte: since7d, not: null } }, select: { createdAt: true, reviewedAt: true }, take: 1000 }), []),
-    safeQuery(() => prisma.event.findMany({ where: { publishStatus: { in: ['ready', 'draft'] }, assignedReviewerId: { not: null } }, select: { assignedReviewerId: true, updatedAt: true }, take: 1000 }), []),
-    safeQuery(() => prisma.proposedChangeSet.groupBy({ by: ['reviewedByUserId'], where: { reviewedAt: { gte: since7d }, reviewedByUserId: { not: null } }, _count: { _all: true }, orderBy: { _count: { _all: 'desc' } }, take: 8 }), [])
+    safeQuery(() => prisma.event.findMany({ where: { publishStatus: { in: ['ready', 'unpublished'] }, assignedReviewerId: { not: null } }, select: { assignedReviewerId: true, updatedAt: true }, take: 1000 }), []),
+    safeQuery(
+      () =>
+        prisma.proposedChangeSet.groupBy({
+          by: ['reviewedByUserId'],
+          where: { reviewedAt: { gte: since7d }, reviewedByUserId: { not: null } },
+          _count: { reviewedByUserId: true },
+          orderBy: { _count: { reviewedByUserId: 'desc' } },
+          take: 8
+        }),
+      []
+    )
   ]);
   const avgTimeToReviewMinutes = avgReviewRows.length
     ? Math.round(avgReviewRows.reduce((acc: number, row: any) => acc + ((row.reviewedAt?.getTime() ?? row.createdAt.getTime()) - row.createdAt.getTime()), 0) / avgReviewRows.length / 60000)

@@ -23,6 +23,7 @@ describe('admin scope controls', () => {
     expect(filterByScope(rows, { scope: 'workspace' }, (row) => ({ workspaceId: row.workspaceId })).map((r) => r.id)).toEqual(['a']);
     expect(filterByScope(rows, { scope: 'source-group' }, (row) => ({ sourceType: row.sourceType })).map((r) => r.id)).toEqual(['a', 'c']);
     expect(filterByScope(rows, { scope: 'reviewer-owned', reviewerId: 'rev-1' }, (row) => ({ assignedReviewerId: row.assignedReviewerId })).map((r) => r.id)).toEqual(['a']);
+    expect(filterByScope(rows, { scope: 'reviewer-owned' }, (row) => ({ assignedReviewerId: row.assignedReviewerId }))).toEqual([]);
   });
 
   test('dashboard duplicate backlog aggregation is scope-aware', () => {

@@ -22,7 +22,7 @@ export default async function DuplicateComparePage({ params }: { params: { candi
   if (!candidate) notFound();
 
   const proposal = asRecord(candidate.proposedChangeSet.proposedDataJson);
-  const canonical = candidate.canonicalEvent
+  const canonical: Record<string, unknown> = candidate.canonicalEvent
     ? {
         title: candidate.canonicalEvent.title,
         startAt: candidate.canonicalEvent.startAt,
