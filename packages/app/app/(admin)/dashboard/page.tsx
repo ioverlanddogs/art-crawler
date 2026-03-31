@@ -33,11 +33,13 @@ export default async function DashboardPage() {
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [activeConfig, activeModel, pendingModeration, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry] =
+  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry] =
     (await Promise.all([
       safeQuery(() => prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { activatedAt: 'desc' } }), null),
       safeQuery(() => prisma.modelVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { promotedAt: 'desc' } }), null),
       safeQuery(() => prisma.ingestExtractedEvent.count({ where: { status: 'PENDING' } }), 0),
+      safeQuery(() => prisma.ingestionJob.count({ where: { status: 'needs_review' } }), 0),
+      safeQuery(() => prisma.ingestionJob.count({ where: { status: 'failed', createdAt: { gte: since24h } } }), 0),
       safeQuery(() => prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: since24h } } }), 0),
       safeQuery(
         () =>
@@ -129,7 +131,15 @@ export default async function DashboardPage() {
 
   return (
     <div className="stack">
-      <PageHeader title="Dashboard" description="Enterprise operations overview with scope cues, SLA risk, team ownership, and executive summaries." />
+      <PageHeader
+        title="Dashboard"
+        description="Enterprise operations overview with scope cues, SLA risk, team ownership, and executive summaries."
+        actions={
+          <Link href="/intake" className="action-button variant-secondary">
+            + Ingest URL
+          </Link>
+        }
+      />
 
       {degradedState ? (
         <AlertBanner tone="danger" title="Tenant degraded · SLA attention required">
@@ -157,6 +167,22 @@ export default async function DashboardPage() {
           detail={activeModel ? `${activeModel.entityType} · ${activeModel.name}` : 'No ACTIVE model version'}
           href="/config#model-versions"
           ctaLabel="Open model versions"
+        />
+        <MetricCard
+          label="Needs review"
+          value={pendingReview}
+          state={pendingReview > 10 ? 'degraded' : 'healthy'}
+          detail="Intake jobs ready for moderation handoff"
+          href="/intake?status=needs_review"
+          ctaLabel="Open intake queue"
+        />
+        <MetricCard
+          label="Intake failures 24h"
+          value={intakeFailed}
+          state={intakeFailed > 0 ? 'degraded' : 'healthy'}
+          detail="Failed intake jobs created in the last 24 hours"
+          href="/intake?status=failed"
+          ctaLabel="View failed jobs"
         />
         <MetricCard
           label="Pending moderation"
