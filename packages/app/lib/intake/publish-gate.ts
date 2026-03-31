@@ -28,7 +28,10 @@ export function checkPublishReadiness(proposedChangeSet: ProposedChangeSetWithRe
     }
   }
 
-  const unreviewedCount = proposedChangeSet.fieldReviews.filter((review) => review.decision == null).length;
+  const unreviewedCount = Object.keys(proposedData).filter((fieldPath) => {
+    const review = reviewsByField.get(fieldPath);
+    return !review || review.decision == null;
+  }).length;
   if (unreviewedCount > 0) {
     blockers.push(`${unreviewedCount} field(s) have not been reviewed.`);
   }

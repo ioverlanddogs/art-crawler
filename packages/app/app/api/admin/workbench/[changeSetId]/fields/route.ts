@@ -82,7 +82,7 @@ export async function POST(_: Request, { params }: { params: { changeSetId: stri
 
   const changeSet = await prisma.proposedChangeSet.findUnique({
     where: { id: params.changeSetId },
-    include: { fieldReviews: true }
+    include: { fieldReviews: true, matchedEvent: true }
   });
 
   if (!changeSet) {
@@ -91,15 +91,42 @@ export async function POST(_: Request, { params }: { params: { changeSetId: stri
 
   const reviewed = new Map(changeSet.fieldReviews.map((review) => [review.fieldPath, review]));
   const proposedData = asRecord(changeSet.proposedDataJson);
+  const canonicalData = changeSet.matchedEvent
+    ? asRecord({
+        title: changeSet.matchedEvent.title,
+        startAt: changeSet.matchedEvent.startAt,
+        endAt: changeSet.matchedEvent.endAt,
+        timezone: changeSet.matchedEvent.timezone,
+        location: changeSet.matchedEvent.location,
+        description: changeSet.matchedEvent.description,
+        sourceUrl: changeSet.matchedEvent.sourceUrl
+      })
+    : null;
 
-  const candidates = Object.keys(proposedData).filter((fieldPath) => {
+  const diffFields = new Map(computeDiff(proposedData, canonicalData).fields.map((field) => [field.fieldPath, field.state]));
+
+  const candidates: string[] = [];
+  const skipped: Array<{ fieldPath: string; reason: string }> = [];
+
+  for (const fieldPath of Object.keys(proposedData)) {
     const review = reviewed.get(fieldPath);
-    if (review?.decision) return false;
-    return (review?.confidence ?? 1) >= 0.75;
-  });
+    if (review?.decision) {
+      skipped.push({ fieldPath, reason: `already_${review.decision}` });
+      continue;
+    }
+    if ((review?.confidence ?? 1) < 0.75) {
+      skipped.push({ fieldPath, reason: 'low_confidence' });
+      continue;
+    }
+    if (diffFields.get(fieldPath) === 'conflicting') {
+      skipped.push({ fieldPath, reason: 'conflicting' });
+      continue;
+    }
+    candidates.push(fieldPath);
+  }
 
   if (candidates.length === 0) {
-    return Response.json({ updated: 0, fieldPaths: [] });
+    return Response.json({ updated: 0, fieldPaths: [], skipped });
   }
 
   await Promise.all(
@@ -124,7 +151,7 @@ export async function POST(_: Request, { params }: { params: { changeSetId: stri
     )
   );
 
-  return Response.json({ updated: candidates.length, fieldPaths: candidates });
+  return Response.json({ updated: candidates.length, fieldPaths: candidates, skipped });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
