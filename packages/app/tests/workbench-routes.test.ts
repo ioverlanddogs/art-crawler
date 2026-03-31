@@ -3,17 +3,27 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const requireRoleMock = vi.fn();
 
 const prismaMock = {
+  sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
   proposedChangeSet: {
+    create: vi.fn(),
     findUnique: vi.fn(),
-    update: vi.fn()
+    update: vi.fn(),
+    findMany: vi.fn()
   },
   fieldReview: {
-    upsert: vi.fn()
+    create: vi.fn(),
+    upsert: vi.fn(),
+    findMany: vi.fn()
   },
   ingestionJob: {
+    create: vi.fn(),
     findFirst: vi.fn(),
-    update: vi.fn()
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    findMany: vi.fn()
   },
+  publishBatch: { create: vi.fn(), findMany: vi.fn() },
   event: {
     create: vi.fn(),
     update: vi.fn()

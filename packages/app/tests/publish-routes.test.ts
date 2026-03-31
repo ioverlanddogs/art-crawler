@@ -4,6 +4,8 @@ const requireRoleMock = vi.fn();
 const checkPublishReadinessMock = vi.fn();
 
 const prismaMock = {
+  sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
   event: {
     count: vi.fn(),
     findMany: vi.fn(),
@@ -11,12 +13,22 @@ const prismaMock = {
     update: vi.fn()
   },
   proposedChangeSet: {
+    create: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    findMany: vi.fn(),
     findFirst: vi.fn()
   },
   publishBatch: {
-    create: vi.fn()
+    create: vi.fn(),
+    findMany: vi.fn()
   },
+  fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
   ingestionJob: {
+    create: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    findMany: vi.fn(),
     updateMany: vi.fn()
   },
   $transaction: vi.fn()
