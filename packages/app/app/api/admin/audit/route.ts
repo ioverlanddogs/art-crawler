@@ -1,6 +1,7 @@
 import { authFailure } from '@/lib/api/response';
 import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
+import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 
 type AuditEvent = {
   id: string;
@@ -16,8 +17,9 @@ type AuditEvent = {
 export const runtime = 'nodejs';
 
 export async function GET(request: Request) {
+  let session;
   try {
-    await requireRole(['viewer', 'moderator', 'operator', 'admin']);
+    session = await requireRole(['viewer', 'moderator', 'operator', 'admin']);
   } catch (error) {
     return authFailure(error);
   }
@@ -27,6 +29,7 @@ export async function GET(request: Request) {
   const entityType = searchParams.get('entityType')?.trim() || undefined;
   const page = Math.max(1, Number.parseInt(searchParams.get('page') ?? '1', 10) || 1);
   const pageSize = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('pageSize') ?? '50', 10) || 50));
+  const scopeContext = resolveScopeContext(searchParams, session.user.id);
 
   const eventVersionWhere: Record<string, unknown> = {};
   const changeSetWhere: Record<string, unknown> = { reviewStatus: { in: ['approved', 'merged', 'rejected'] } };
@@ -139,7 +142,11 @@ export async function GET(request: Request) {
     }))
   ];
 
-  const filtered = unified.filter((row) => {
+  const filtered = filterByScope(unified, scopeContext, (row) => ({
+    assignedReviewerId: typeof row.metadata?.reviewerId === 'string' ? (row.metadata.reviewerId as string) : null,
+    workspaceId: typeof row.metadata?.workspaceId === 'string' ? (row.metadata.workspaceId as string) : null,
+    sourceGroup: typeof row.metadata?.sourceGroup === 'string' ? (row.metadata.sourceGroup as string) : null
+  })).filter((row) => {
     if (entityId && row.entityId !== entityId) return false;
     if (entityType && row.entityType !== entityType) return false;
     return true;

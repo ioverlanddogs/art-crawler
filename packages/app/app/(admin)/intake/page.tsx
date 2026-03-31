@@ -3,6 +3,7 @@ import { EmptyState, IntakeJobStatusBadge, PageHeader, SectionCard } from '@/com
 import { prisma } from '@/lib/db';
 import { IngestionJobStatus } from '@/lib/prisma-client';
 import { IntakePageClient } from './IntakePageClient';
+import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ function truncate(value: string, max = 60) {
 }
 
 export default async function IntakePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const scopeContext = resolveScopeContext(searchParams);
   const statusParam = typeof searchParams?.status === 'string' ? searchParams.status : null;
   const status = statusParam && statusParam in IngestionJobStatus ? IngestionJobStatus[statusParam as keyof typeof IngestionJobStatus] : undefined;
 
@@ -23,10 +25,11 @@ export default async function IntakePage({ searchParams }: { searchParams?: Reco
     orderBy: { createdAt: 'desc' },
     include: {
       sourceDocument: {
-        select: { sourceUrl: true }
+        select: { sourceUrl: true, sourceType: true }
       }
     }
   });
+  const scopedJobs = filterByScope(jobs, scopeContext, (job) => ({ sourceType: job.sourceDocument.sourceType }));
 
   return (
     <div className="stack">
@@ -37,7 +40,7 @@ export default async function IntakePage({ searchParams }: { searchParams?: Reco
       </SectionCard>
 
       <SectionCard title="Recent jobs">
-        {jobs.length === 0 ? (
+        {scopedJobs.length === 0 ? (
           <EmptyState title="No intake jobs yet" description="Submit a URL above to create your first intake job." />
         ) : (
           <div className="table-wrap">
@@ -52,7 +55,7 @@ export default async function IntakePage({ searchParams }: { searchParams?: Reco
                 </tr>
               </thead>
               <tbody>
-                {jobs.map((job) => (
+                {scopedJobs.map((job) => (
                   <tr key={job.id}>
                     <td title={job.sourceDocument.sourceUrl}>{truncate(job.sourceDocument.sourceUrl)}</td>
                     <td>
@@ -61,7 +64,7 @@ export default async function IntakePage({ searchParams }: { searchParams?: Reco
                     <td>{job.startedAt ? job.startedAt.toLocaleString() : '—'}</td>
                     <td>{job.completedAt ? job.completedAt.toLocaleString() : '—'}</td>
                     <td>
-                      <Link href={`/intake/${job.id}`} className="inline-link">
+                      <Link href={withScopeQuery(`/intake/${job.id}`, scopeContext.scope)} className="inline-link">
                         Open
                       </Link>
                     </td>

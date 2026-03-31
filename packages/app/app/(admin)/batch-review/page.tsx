@@ -3,17 +3,19 @@ import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
 import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
+import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
 
 export const dynamic = 'force-dynamic';
 
 const FILTERS = ['duplicate-blocked', 'publish-blocked', 'low-confidence', 'stale'] as const;
 
 export default async function BatchReviewPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const scopeContext = resolveScopeContext(searchParams);
   const activeFilter = asString(searchParams?.filter);
   const [rows, reviewers] = await Promise.all([
     prisma.proposedChangeSet.findMany({
     include: {
-      sourceDocument: { select: { sourceUrl: true } },
+      sourceDocument: { select: { sourceUrl: true, sourceType: true } },
       duplicateCandidates: { select: { resolutionStatus: true, unresolvedBlockerCount: true } },
       fieldReviews: { select: { confidence: true } }
     },
@@ -23,7 +25,10 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
     prisma.adminUser.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true, email: true }, orderBy: { email: 'asc' }, take: 100 })
   ]);
 
-  const filtered = rows.filter((row) => {
+  const filtered = filterByScope(rows, scopeContext, (row) => ({
+    assignedReviewerId: row.assignedReviewerId,
+    sourceType: row.sourceDocument.sourceType
+  })).filter((row) => {
     const unresolvedDupes = row.duplicateCandidates.some((candidate) => candidate.resolutionStatus === 'unresolved' || candidate.unresolvedBlockerCount > 0);
     const lowConfidence = row.fieldReviews.some((review) => (review.confidence ?? 1) < 0.75);
     const stale = Date.now() - row.createdAt.getTime() > 72 * 60 * 60 * 1000;
@@ -43,9 +48,9 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
 
       <SectionCard title="Filters">
         <div className="filters-row">
-          <Link href="/batch-review" className={`action-button ${!activeFilter ? 'variant-primary' : 'variant-secondary'}`}>All</Link>
+          <Link href={withScopeQuery('/batch-review', scopeContext.scope)} className={`action-button ${!activeFilter ? 'variant-primary' : 'variant-secondary'}`}>All</Link>
           {FILTERS.map((filter) => (
-            <Link key={filter} href={`/batch-review?filter=${filter}`} className={`action-button ${activeFilter === filter ? 'variant-primary' : 'variant-secondary'}`}>
+            <Link key={filter} href={withScopeQuery(`/batch-review?filter=${filter}`, scopeContext.scope)} className={`action-button ${activeFilter === filter ? 'variant-primary' : 'variant-secondary'}`}>
               {filter}
             </Link>
           ))}
@@ -76,11 +81,11 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
                     <td>{row.assignedReviewerId ?? 'unassigned'} · {row.slaState}</td>
                     <td>
                       <div className="filters-row">
-                        <Link className="action-button variant-secondary" href={`/workbench/${row.id}`}>Assign</Link>
-                        <Link className="action-button variant-secondary" href={`/workbench/${row.id}`}>Approve safe fields</Link>
-                        <Link className="action-button variant-secondary" href="/duplicates">Send to duplicates</Link>
-                        <Link className="action-button variant-secondary" href={`/workbench/${row.id}`}>Request reparse</Link>
-                        <Link className="action-button variant-primary" href={`/workbench/${row.id}`}>Mark escalate</Link>
+                        <Link className="action-button variant-secondary" href={withScopeQuery(`/workbench/${row.id}`, scopeContext.scope)}>Assign</Link>
+                        <Link className="action-button variant-secondary" href={withScopeQuery(`/workbench/${row.id}`, scopeContext.scope)}>Approve safe fields</Link>
+                        <Link className="action-button variant-secondary" href={withScopeQuery('/duplicates', scopeContext.scope)}>Send to duplicates</Link>
+                        <Link className="action-button variant-secondary" href={withScopeQuery(`/workbench/${row.id}`, scopeContext.scope)}>Request reparse</Link>
+                        <Link className="action-button variant-primary" href={withScopeQuery(`/workbench/${row.id}`, scopeContext.scope)}>Mark escalate</Link>
                         <AssignmentControls endpoint={`/api/admin/workbench/${row.id}/assignment`} reviewers={reviewers} currentAssigneeId={row.assignedReviewerId} />
                       </div>
                     </td>

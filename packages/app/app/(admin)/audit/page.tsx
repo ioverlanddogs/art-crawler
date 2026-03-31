@@ -2,14 +2,15 @@ import { PageHeader } from '@/components/admin';
 import { AuditLogTable, type AuditLogItem } from '@/components/admin/AuditLogTable';
 import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
+import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AuditPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
-  await requireRole(['viewer', 'moderator', 'operator', 'admin']);
-
   const entityId = asString(searchParams?.entityId);
   const entityType = asString(searchParams?.entityType);
+  const session = await requireRole(['viewer', 'moderator', 'operator', 'admin']);
+  const scopeContext = resolveScopeContext(searchParams, session.user.id);
   const page = Math.max(1, Number.parseInt(asString(searchParams?.page) ?? '1', 10) || 1);
   const pageSize = 50;
 
@@ -60,7 +61,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
       target: `Event ${row.eventId}`,
       reason: row.changeSummary ?? null,
       outcome: `Version ${row.versionNumber}`,
-      rawDetail: JSON.stringify({ sourceDocumentId: row.sourceDocumentId, publishBatchId: row.publishBatchId })
+      rawDetail: JSON.stringify({ sourceDocumentId: row.sourceDocumentId, publishBatchId: row.publishBatchId, scope: 'workspace', workspaceId: row.eventId })
     })),
     ...changeSets.map((row) => ({
       id: `changeset:${row.id}`,
@@ -70,7 +71,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
       target: row.matchedEventId ? `Event ${row.matchedEventId}` : `SourceDocument ${row.sourceDocumentId}`,
       reason: row.notes ?? null,
       outcome: row.reviewStatus,
-      rawDetail: JSON.stringify({ sourceDocumentId: row.sourceDocumentId, matchedEventId: row.matchedEventId })
+      rawDetail: JSON.stringify({ sourceDocumentId: row.sourceDocumentId, matchedEventId: row.matchedEventId, scope: 'team', reviewerId: row.reviewedByUserId })
     })),
     ...ingestionJobs.map((row) => ({
       id: `ingestion:${row.id}`,
@@ -80,7 +81,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
       target: `SourceDocument ${row.sourceDocumentId}`,
       reason: row.errorMessage ?? null,
       outcome: row.status,
-      rawDetail: JSON.stringify({ errorCode: row.errorCode })
+      rawDetail: JSON.stringify({ errorCode: row.errorCode, scope: 'source-group', sourceGroup: 'intake' })
     })),
     ...telemetry.map((row) => ({
       id: `telemetry:${row.id}`,
@@ -90,12 +91,20 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
       target: `${row.entityType ?? 'Unknown'} ${row.entityId ?? 'unknown'}`,
       reason: row.detail ?? null,
       outcome: row.status,
-      rawDetail: JSON.stringify(row.metadata ?? {})
+      rawDetail: JSON.stringify({ ...(row.metadata as Record<string, unknown> ?? {}), scope: (row.metadata as any)?.scope ?? 'global' })
     }))
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  ];
+  const scopedUnified = filterByScope(unified, scopeContext, (row) => {
+    const detail = safelyParseDetail(row.rawDetail);
+    return {
+      assignedReviewerId: typeof detail.reviewerId === 'string' ? detail.reviewerId : null,
+      sourceGroup: typeof detail.sourceGroup === 'string' ? detail.sourceGroup : null,
+      workspaceId: typeof detail.workspaceId === 'string' ? detail.workspaceId : null
+    };
+  }).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const total = unified.length;
-  const rows: AuditLogItem[] = unified.slice((page - 1) * pageSize, page * pageSize);
+  const total = scopedUnified.length;
+  const rows: AuditLogItem[] = scopedUnified.slice((page - 1) * pageSize, page * pageSize);
   const hasNext = page * pageSize < total;
 
   return (
@@ -132,6 +141,14 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
       </div>
     </div>
   );
+}
+
+function safelyParseDetail(raw: string): Record<string, unknown> {
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
 }
 
 function asString(value: string | string[] | undefined): string | undefined {
