@@ -6,7 +6,7 @@ Use this checklist before declaring the web UI production-ready.
 
 - [ ] GitHub repo is up to date and the default branch is correct.
 - [ ] Vercel project points to `packages/app` as the root directory.
-- [ ] Build command is set to `npm run prisma:generate && npm run build`.
+- [ ] Build command is set to `npm run build`.
 - [ ] Preview and production environments are separated correctly.
 
 ## Environment variables

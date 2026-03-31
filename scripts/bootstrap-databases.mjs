@@ -1,10 +1,41 @@
 #!/usr/bin/env node
 import { execSync } from 'node:child_process';
 
-const DATABASES = ['artio_app', 'artio_mining'];
+const DATABASE_URL_ENV_KEYS = ['DATABASE_URL', 'MINING_DATABASE_URL'];
 
 function run(command) {
   return execSync(command, { encoding: 'utf8' }).trim();
+}
+
+function getDatabaseNameFromEnv(envKey) {
+  const databaseUrl = process.env[envKey];
+  if (!databaseUrl) {
+    throw new Error(`${envKey} is required to bootstrap databases.`);
+  }
+
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(databaseUrl);
+  } catch {
+    throw new Error(`${envKey} is not a valid URL.`);
+  }
+
+  const dbPath = parsedUrl.pathname.replace(/^\/+/, '');
+  const databaseName = decodeURIComponent(dbPath);
+
+  if (!databaseName) {
+    throw new Error(`${envKey} must include a database name in the URL path.`);
+  }
+
+  if (databaseName.includes('/')) {
+    throw new Error(`${envKey} contains an invalid database name: ${databaseName}`);
+  }
+
+  return databaseName;
+}
+
+function getTargetDatabases() {
+  return DATABASE_URL_ENV_KEYS.map(getDatabaseNameFromEnv);
 }
 
 function databaseExists(databaseName) {
@@ -29,7 +60,7 @@ function ensureDatabase(databaseName) {
 }
 
 function main() {
-  DATABASES.forEach(ensureDatabase);
+  getTargetDatabases().forEach(ensureDatabase);
 }
 
 try {
