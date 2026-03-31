@@ -5,8 +5,6 @@
 
 ## Install and prepare
 `npm install`
-`npm run prisma:generate -w @artio/app`
-`npm run prisma:generate -w @artio/mining`
 `npm run prisma:push -w @artio/app`
 `# DATABASE_URL is required; if DATABASE_URL_DIRECT is unset, @artio/app prisma:push falls back to DATABASE_URL.`
 `npm run prisma:push -w @artio/mining`

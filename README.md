@@ -23,8 +23,6 @@ npm run setup:local
 cp .env.example .env
 docker compose up -d
 npm install
-npm run prisma:generate -w @artio/app
-npm run prisma:generate -w @artio/mining
 npm run prisma:push -w @artio/app
 npm run prisma:push -w @artio/mining
 npm run seed:demo

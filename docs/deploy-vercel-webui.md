@@ -46,10 +46,10 @@ Create a Vercel project from the GitHub repo and use these settings:
 - **Framework Preset**: Next.js
 - **Root Directory**: `packages/app`
 - **Install Command**: `npm install`
-- **Build Command**: `npm run prisma:generate && npm run build`
+- **Build Command**: `npm run build`
 - **Output Directory**: `.next`
 
-Because the app uses Prisma, `prisma generate` must run before the Next.js build.
+`npm run build` automatically runs workspace `prebuild` hooks, so Prisma client generation happens before Next.js build steps.
 
 ## Required environment variables in Vercel
 
