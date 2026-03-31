@@ -56,6 +56,23 @@ describe('workbench services', () => {
     expect(result.blockers).toContain('1 field(s) have not been reviewed.');
   });
 
+  test('checkPublishReadiness blocks when proposed fields have no review records', () => {
+    const result = checkPublishReadiness({
+      proposedDataJson: {
+        title: 'Show',
+        startAt: '2026-04-01T19:00:00Z',
+        timezone: 'UTC'
+      },
+      fieldReviews: [
+        { fieldPath: 'title', decision: 'accepted', confidence: 0.9 },
+        { fieldPath: 'startAt', decision: 'accepted', confidence: 0.9 }
+      ]
+    });
+
+    expect(result.ready).toBe(false);
+    expect(result.blockers).toContain('1 field(s) have not been reviewed.');
+  });
+
   test('checkPublishReadiness emits warning for low-confidence accepted field', () => {
     const result = checkPublishReadiness({
       proposedDataJson: { title: 'Gallery Night', startAt: '2026-04-01T19:00:00Z' },

@@ -85,7 +85,7 @@ export async function POST(request: Request, { params }: { params: { changeSetId
       }
     });
 
-    const job = await tx.ingestionJob.findFirst({ where: { sourceDocumentId: changeSet.sourceDocumentId } });
+    const job = await tx.ingestionJob.findFirst({ where: { sourceDocumentId: changeSet.sourceDocumentId }, orderBy: { createdAt: 'desc' } });
     if (job) {
       await tx.ingestionJob.update({
         where: { id: job.id },

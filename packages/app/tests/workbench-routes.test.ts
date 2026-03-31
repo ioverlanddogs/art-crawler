@@ -163,6 +163,7 @@ describe('workbench routes', () => {
 
     expect(response.status).toBe(200);
     expect(prismaMock.event.create).toHaveBeenCalled();
+    expect(prismaMock.ingestionJob.findFirst).toHaveBeenCalledWith(expect.objectContaining({ orderBy: { createdAt: 'desc' } }));
     await expect(response.json()).resolves.toEqual(expect.objectContaining({ eventId: 'evt-1', created: true }));
   });
 
@@ -172,7 +173,8 @@ describe('workbench routes', () => {
     prismaMock.proposedChangeSet.findUnique.mockResolvedValueOnce({
       id: 'pcs-1',
       proposedDataJson: { title: 'Show', startAt: '2026-04-01T19:00:00Z' },
-      fieldReviews: []
+      fieldReviews: [],
+      matchedEvent: null
     });
     prismaMock.fieldReview.upsert.mockResolvedValue({ id: 'fr-1' });
 
@@ -182,15 +184,54 @@ describe('workbench routes', () => {
     await expect(response.json()).resolves.toEqual(expect.objectContaining({ updated: 2 }));
   });
 
-  test('POST /reparse queues ingestion job', async () => {
-    const { POST } = await import('@/app/api/admin/workbench/[changeSetId]/reparse/route');
-    prismaMock.proposedChangeSet.findUnique.mockResolvedValueOnce({ id: 'pcs-1', sourceDocumentId: 'sd-1', notes: null });
-    prismaMock.ingestionJob.findFirst.mockResolvedValueOnce({ id: 'job-1' });
+  test('POST /fields returns skipped reasons for non-safe fields', async () => {
+    const { POST } = await import('@/app/api/admin/workbench/[changeSetId]/fields/route');
+    prismaMock.proposedChangeSet.findUnique.mockResolvedValueOnce({
+      id: 'pcs-1',
+      proposedDataJson: { title: 'Show', timezone: 'UTC', description: 'note' },
+      fieldReviews: [
+        { fieldPath: 'title', decision: null, confidence: 0.8 },
+        { fieldPath: 'timezone', decision: 'rejected', confidence: 0.9 },
+        { fieldPath: 'description', decision: null, confidence: 0.4 }
+      ],
+      matchedEvent: null
+    });
+    prismaMock.fieldReview.upsert.mockResolvedValue({ id: 'fr-1' });
 
     const response = await POST(new Request('http://localhost', { method: 'POST' }), { params: { changeSetId: 'pcs-1' } });
+    const payload = await response.json();
 
     expect(response.status).toBe(200);
-    expect(prismaMock.ingestionJob.update).toHaveBeenCalled();
+    expect(payload.updated).toBe(1);
+    expect(payload.skipped).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ fieldPath: 'timezone', reason: 'already_rejected' }),
+        expect.objectContaining({ fieldPath: 'description', reason: 'low_confidence' })
+      ])
+    );
+  });
+
+  test('POST /reparse queues ingestion job', async () => {
+    const { POST } = await import('@/app/api/admin/workbench/[changeSetId]/reparse/route');
+    prismaMock.proposedChangeSet.findUnique.mockResolvedValueOnce({ id: 'pcs-1', sourceDocumentId: 'sd-1', notes: 'prior note' });
+    prismaMock.ingestionJob.findFirst.mockResolvedValueOnce({ id: 'job-1' });
+
+    const response = await POST(
+      new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ note: 'retry with extra context' })
+      }),
+      { params: { changeSetId: 'pcs-1' } }
+    );
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.ingestionJob.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'queued', startedAt: null }) })
+    );
+    expect(prismaMock.proposedChangeSet.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ notes: expect.stringContaining('retry with extra context') }) })
+    );
   });
   test('POST /reject returns 200 and marks changeset rejected', async () => {
     const { POST } = await import('@/app/api/admin/workbench/[changeSetId]/reject/route');

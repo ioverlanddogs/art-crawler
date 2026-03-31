@@ -29,9 +29,9 @@ export async function GET(request: Request) {
   const pageSize = Math.min(100, Math.max(1, Number.parseInt(searchParams.get('pageSize') ?? '50', 10) || 50));
 
   const eventVersionWhere: Record<string, unknown> = {};
-  const changeSetWhere: Record<string, unknown> = { reviewStatus: { in: ['merged', 'rejected'] } };
+  const changeSetWhere: Record<string, unknown> = { reviewStatus: { in: ['approved', 'merged', 'rejected'] } };
   const ingestionWhere: Record<string, unknown> = {};
-  const telemetryWhere: Record<string, unknown> = { stage: 'ai_extraction' };
+  const telemetryWhere: Record<string, unknown> = { stage: { in: ['ai_extraction', 'rollback'] } };
 
   if (entityType === 'Event' && entityId) {
     eventVersionWhere.eventId = entityId;
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
     })),
     ...changeSets.map((row) => ({
       id: `changeset:${row.id}`,
-      eventType: row.reviewStatus === 'merged' ? 'approved' : 'rejected',
+      eventType: row.reviewStatus === 'rejected' ? 'rejected' : 'approved',
       entityId: row.matchedEventId ?? row.sourceDocumentId,
       entityType: row.matchedEventId ? 'Event' : 'SourceDocument',
       actorUserId: row.reviewedByUserId ?? null,
@@ -106,7 +106,7 @@ export async function GET(request: Request) {
     })),
     ...telemetry.map((row) => ({
       id: `telemetry:${row.id}`,
-      eventType: 'extraction_run',
+      eventType: row.stage === 'rollback' ? 'rollback_execution' : 'extraction_run',
       entityId: row.entityId ?? 'unknown',
       entityType: row.entityType ?? 'Unknown',
       actorUserId: null,

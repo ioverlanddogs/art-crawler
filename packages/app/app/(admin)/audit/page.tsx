@@ -14,9 +14,9 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
   const pageSize = 50;
 
   const eventVersionWhere: Record<string, unknown> = {};
-  const changeSetWhere: Record<string, unknown> = { reviewStatus: { in: ['merged', 'rejected'] } };
+  const changeSetWhere: Record<string, unknown> = { reviewStatus: { in: ['approved', 'merged', 'rejected'] } };
   const ingestionWhere: Record<string, unknown> = {};
-  const telemetryWhere: Record<string, unknown> = { stage: 'ai_extraction' };
+  const telemetryWhere: Record<string, unknown> = { stage: { in: ['ai_extraction', 'rollback'] } };
 
   if (entityType === 'Event' && entityId) {
     eventVersionWhere.eventId = entityId;
@@ -54,7 +54,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
       id: `changeset:${row.id}`,
       createdAt: (row.reviewedAt ?? row.updatedAt).toISOString(),
       actor: row.reviewedByUserId ?? 'unknown',
-      action: row.reviewStatus === 'merged' ? 'approved' : 'rejected',
+      action: row.reviewStatus === 'rejected' ? 'rejected' : 'approved',
       target: row.matchedEventId ? `Event ${row.matchedEventId}` : `SourceDocument ${row.sourceDocumentId}`,
       reason: row.notes ?? null,
       outcome: row.reviewStatus,
@@ -74,7 +74,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: Recor
       id: `telemetry:${row.id}`,
       createdAt: row.createdAt.toISOString(),
       actor: 'system',
-      action: 'extraction_run',
+      action: row.stage === 'rollback' ? 'rollback_execution' : 'extraction_run',
       target: `${row.entityType ?? 'Unknown'} ${row.entityId ?? 'unknown'}`,
       reason: row.detail ?? null,
       outcome: row.status,

@@ -78,6 +78,7 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
   const [rejectOpen, setRejectOpen] = useState(false);
   const [notesDraft, setNotesDraft] = useState(data.notes ?? '');
   const [busy, setBusy] = useState<'approve' | 'reject' | 'draft' | 'safe' | 'reparse' | null>(null);
+  const [safeFieldsResult, setSafeFieldsResult] = useState<{ updated: number; skipped: Array<{ fieldPath: string; reason: string }> } | null>(null);
 
   const fields = useMemo(
     () => Object.entries(data.proposedDataJson ?? {}).map(([fieldPath, value]) => ({ fieldPath, value })),
@@ -123,10 +124,11 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
 
   useEffect(() => {
     const interval = window.setInterval(() => {
+      if (document.hidden || editingField || busy) return;
       void refreshData();
     }, 15000);
     return () => window.clearInterval(interval);
-  }, [data.id]);
+  }, [busy, data.id, editingField]);
 
   function reviewFor(fieldPath: string): FieldReview | undefined {
     return data.fieldReviews.find((fieldReview) => fieldReview.fieldPath === fieldPath);
@@ -202,17 +204,32 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
 
   async function approveSafeFields() {
     setBusy('safe');
-    await fetch(`/api/admin/workbench/${data.id}/fields`, { method: 'POST' });
+    const response = await fetch(`/api/admin/workbench/${data.id}/fields`, { method: 'POST' });
+    if (response.ok) {
+      const payload = (await response.json()) as { updated: number; skipped?: Array<{ fieldPath: string; reason: string }> };
+      setSafeFieldsResult({ updated: payload.updated, skipped: payload.skipped ?? [] });
+    }
     setBusy(null);
     await refreshData();
   }
 
   async function requestReparse() {
     setBusy('reparse');
-    const response = await fetch(`/api/admin/workbench/${data.id}/reparse`, { method: 'POST' });
+    const response = await fetch(`/api/admin/workbench/${data.id}/reparse`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ note: notesDraft.trim() || undefined })
+    });
     setBusy(null);
-    if (response.ok && data.latestIngestionJobId) {
-      router.push(`/intake/${data.latestIngestionJobId}`);
+    if (response.ok) {
+      const payload = (await response.json()) as { ingestionJobId?: string | null };
+      if (payload.ingestionJobId) {
+        router.push(`/intake/${payload.ingestionJobId}`);
+        return;
+      }
+      if (data.latestIngestionJobId) {
+        router.push(`/intake/${data.latestIngestionJobId}`);
+      }
     }
   }
 
@@ -275,6 +292,12 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
       </SectionCard>
 
       <SectionCard title="Actions">
+        {safeFieldsResult ? (
+          <p className="kpi-note">
+            Auto-approved {safeFieldsResult.updated} field(s)
+            {safeFieldsResult.skipped.length > 0 ? `; skipped ${safeFieldsResult.skipped.length} (${safeFieldsResult.skipped.map((item) => `${item.fieldPath}: ${item.reason}`).join(', ')})` : ''}.
+          </p>
+        ) : null}
         <div className="stack">
           <label htmlFor="review-notes">Reviewer notes</label>
           <textarea id="review-notes" className="text-area" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} placeholder="Context for other operators and publish reviewers" />
