@@ -314,6 +314,9 @@ export default async function DashboardPage({ searchParams }: { searchParams?: R
           <SlaBadge state={slaState} inferred /> No high-severity alert is active in this telemetry sample.
         </AlertBanner>
       )}
+      <AlertBanner tone="info" title="Self-healing investigations">
+        Source quarantine and fallback controls are visible in <Link href="/self-healing">Self-healing</Link> when parser failures, duplicate spikes, or retry hotspots emerge.
+      </AlertBanner>
 
       <div className="stats-grid">
         <MetricCard

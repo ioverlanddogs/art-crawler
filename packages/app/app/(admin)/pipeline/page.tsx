@@ -216,6 +216,9 @@ export default async function PipelinePage() {
         />
       </div>
       <SectionCard title="Pipeline + source health intelligence" subtitle="Failure-rate and retry risk signals for proactive triage.">
+        <p className="kpi-note">
+          Self-healing source controls are available in the <Link href="/self-healing">Self-healing console</Link> for quarantine, fallback, and release audits.
+        </p>
         <div className="stats-grid">
           <StatCard label="Failed extraction jobs" value={healthRollup.failedExtractionJobs} />
           <StatCard label="Parser mismatch spike" value={healthRollup.parserFailureSpike} />
