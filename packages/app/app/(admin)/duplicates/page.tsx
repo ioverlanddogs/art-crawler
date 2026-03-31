@@ -1,5 +1,7 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
+import { AssignmentControls } from '@/components/admin/AssignmentControls';
+import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 
@@ -12,6 +14,7 @@ export default async function DuplicateQueuePage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
+  await requireRole(['viewer', 'moderator', 'operator', 'admin']);
   const activeFilter = asString(searchParams?.filter);
   const where: Record<string, unknown> = { resolutionStatus: 'unresolved' };
   if (activeFilter === 'high-confidence') where.matchConfidence = { gte: 0.8 };
@@ -19,7 +22,8 @@ export default async function DuplicateQueuePage({
   if (activeFilter === 'uncorroborated') where.corroborationSourceCount = { lt: 1 };
   if (activeFilter === 'publish-blocked') where.unresolvedBlockerCount = { gt: 0 };
 
-  const candidates = await prisma.duplicateCandidate.findMany({
+  const [candidates, reviewers] = await Promise.all([
+    prisma.duplicateCandidate.findMany({
     where,
     include: {
       proposedChangeSet: { select: { id: true, reviewStatus: true, sourceDocument: { select: { sourceUrl: true } } } },
@@ -27,7 +31,9 @@ export default async function DuplicateQueuePage({
     },
     orderBy: [{ unresolvedBlockerCount: 'desc' }, { matchConfidence: 'desc' }, { updatedAt: 'desc' }],
     take: 300
-  });
+    }),
+    prisma.adminUser.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true, email: true }, orderBy: { email: 'asc' }, take: 100 })
+  ]);
 
   const byHotspot = groupByKey(candidates, (row) => row.source ?? 'unknown');
   const byCanonical = groupByKey(candidates, (row) => row.canonicalEventId ?? 'none');
@@ -91,6 +97,7 @@ export default async function DuplicateQueuePage({
                   <td>
                     <div className="filters-row">
                       <Link href={`/duplicates/${row.id}`} className="action-button variant-primary">Open compare</Link>
+                      <AssignmentControls endpoint={`/api/admin/duplicates/${row.id}/assignment`} reviewers={reviewers} currentAssigneeId={row.assignedReviewerId} />
                     </div>
                   </td>
                 </tr>

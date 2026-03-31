@@ -145,6 +145,27 @@ export default async function DashboardPage() {
       )
     ])) as any;
 
+  const [overdueQueueCount, oldestUnassignedItem, avgReviewRows, duplicateSlaBreaches, blockerRows, reviewerLeaderboard] = await Promise.all([
+    safeQuery(() => prisma.proposedChangeSet.count({ where: { reviewStatus: { in: ['draft', 'in_review'] }, dueAt: { lt: new Date() } } }), 0),
+    safeQuery(() => prisma.proposedChangeSet.findFirst({ where: { reviewStatus: { in: ['draft', 'in_review'] }, assignedReviewerId: null }, orderBy: { createdAt: 'asc' }, select: { id: true, createdAt: true } }), null),
+    safeQuery(() => prisma.proposedChangeSet.findMany({ where: { reviewedAt: { gte: since7d, not: null } }, select: { createdAt: true, reviewedAt: true }, take: 1000 }), []),
+    safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved', dueAt: { lt: new Date() } } }), 0),
+    safeQuery(() => prisma.event.findMany({ where: { publishStatus: { in: ['ready', 'draft'] }, assignedReviewerId: { not: null } }, select: { assignedReviewerId: true, updatedAt: true }, take: 1000 }), []),
+    safeQuery(() => prisma.proposedChangeSet.groupBy({ by: ['reviewedByUserId'], where: { reviewedAt: { gte: since7d }, reviewedByUserId: { not: null } }, _count: { _all: true }, orderBy: { _count: { _all: 'desc' } }, take: 8 }), [])
+  ]);
+  const avgTimeToReviewMinutes = avgReviewRows.length
+    ? Math.round(avgReviewRows.reduce((acc: number, row: any) => acc + ((row.reviewedAt?.getTime() ?? row.createdAt.getTime()) - row.createdAt.getTime()), 0) / avgReviewRows.length / 60000)
+    : null;
+  const blockerAgingByOwner = Object.entries(
+    blockerRows.reduce((acc: Record<string, number[]>, row: any) => {
+      const owner = row.assignedReviewerId ?? 'unassigned';
+      const age = Math.max(0, Math.round((Date.now() - row.updatedAt.getTime()) / 3600000));
+      acc[owner] = [...(acc[owner] ?? []), age];
+      return acc;
+    }, {})
+  ).map(([owner, ages]) => ({ owner, avgHours: Math.round((ages.reduce((a, b) => a + b, 0) / Math.max(1, ages.length)) * 10) / 10, count: ages.length }))
+    .sort((a, b) => b.avgHours - a.avgHours)
+    .slice(0, 5);
   const topFailingStage = failureByStage[0]?.stage ?? null;
   const oldestPendingMinutes = backlogStats.oldestPending ? Math.floor((Date.now() - backlogStats.oldestPending.createdAt.getTime()) / 60000) : null;
 
@@ -314,11 +335,37 @@ export default async function DashboardPage() {
         />
       </div>
 
+      <SectionCard title="Assignment + SLA control tower" subtitle="B1 ownership visibility for queue health and team throughput.">
+        <div className="stats-grid">
+          <StatCard label="Overdue queue count" value={overdueQueueCount} />
+          <StatCard label="Oldest unassigned" value={oldestUnassignedItem ? `${Math.round((Date.now() - oldestUnassignedItem.createdAt.getTime()) / 3600000)}h` : 'none'} detail={oldestUnassignedItem?.id ?? 'No unassigned items'} />
+          <StatCard label="Avg time to review" value={avgTimeToReviewMinutes ? `${avgTimeToReviewMinutes}m` : 'n/a'} />
+          <StatCard label="Duplicate SLA breaches" value={duplicateSlaBreaches} />
+        </div>
+        <div className="two-col">
+          <article><h3>Publish blocker aging by owner</h3><ul className="timeline">{blockerAgingByOwner.map((row) => <li key={row.owner}><strong>{row.owner}</strong><p className="kpi-note">{row.count} blockers · {row.avgHours}h avg age</p></li>)}</ul></article>
+          <article><h3>Reviewer throughput leaderboard</h3><ul className="timeline">{reviewerLeaderboard.map((row: any) => <li key={row.reviewedByUserId}><strong>{row.reviewedByUserId}</strong><p className="kpi-note">{row._count._all} reviews / 7d</p></li>)}</ul></article>
+        </div>
+      </SectionCard>
+
       <div className="three-col">
         <ExecutiveKpiCard title="Weekly throughput" value={`${successes7d} successful runs`} note="7-day successful pipeline stage completions." scope="global" />
         <ExecutiveKpiCard title="MTTR snapshot" value={mttrSnapshot} note="Mean time to recover is inferred from queue age and recent failure density." scope="tenant" />
         <ExecutiveKpiCard title="Incident trend" value={`${failures7d} incidents / 7d`} note="Leadership summary from pipeline_telemetry failures." scope="team" />
       </div>
+
+      <SectionCard title="Assignment + SLA control tower" subtitle="B1 ownership visibility for queue health and team throughput.">
+        <div className="stats-grid">
+          <StatCard label="Overdue queue count" value={overdueQueueCount} />
+          <StatCard label="Oldest unassigned" value={oldestUnassignedItem ? `${Math.round((Date.now() - oldestUnassignedItem.createdAt.getTime()) / 3600000)}h` : 'none'} detail={oldestUnassignedItem?.id ?? 'No unassigned items'} />
+          <StatCard label="Avg time to review" value={avgTimeToReviewMinutes ? `${avgTimeToReviewMinutes}m` : 'n/a'} />
+          <StatCard label="Duplicate SLA breaches" value={duplicateSlaBreaches} />
+        </div>
+        <div className="two-col">
+          <article><h3>Publish blocker aging by owner</h3><ul className="timeline">{blockerAgingByOwner.map((row) => <li key={row.owner}><strong>{row.owner}</strong><p className="kpi-note">{row.count} blockers · {row.avgHours}h avg age</p></li>)}</ul></article>
+          <article><h3>Reviewer throughput leaderboard</h3><ul className="timeline">{reviewerLeaderboard.map((row: any) => <li key={row.reviewedByUserId}><strong>{row.reviewedByUserId}</strong><p className="kpi-note">{row._count._all} reviews / 7d</p></li>)}</ul></article>
+        </div>
+      </SectionCard>
 
       <div className="three-col">
         <TrendSummaryCard title="Backlog trend" trendLabel={`${backlogStats.pendingTotal} pending`} trendDirection={backlogStats.pendingTotal > 35 ? 'up' : backlogStats.pendingTotal > 0 ? 'flat' : 'down'} detail="Trend direction is from current backlog pressure only (partial historical support)." />

@@ -37,11 +37,14 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
       })
     : null;
 
-  const latestIngestionJob = await prisma.ingestionJob.findFirst({
+  const [latestIngestionJob, reviewers] = await Promise.all([
+    prisma.ingestionJob.findFirst({
     where: { sourceDocumentId: changeSet.sourceDocumentId },
     orderBy: { createdAt: 'desc' },
     select: { id: true }
-  });
+    }),
+    prisma.adminUser.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true, email: true }, orderBy: { email: 'asc' }, take: 100 })
+  ]);
 
   return (
     <WorkbenchClient
@@ -66,7 +69,8 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
           fieldReviews: changeSet.fieldReviews,
           duplicateCandidates: changeSet.duplicateCandidates
         }),
-        latestIngestionJobId: latestIngestionJob?.id ?? null
+        latestIngestionJobId: latestIngestionJob?.id ?? null,
+        reviewers
       }}
     />
   );

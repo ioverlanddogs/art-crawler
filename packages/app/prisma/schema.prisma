@@ -123,6 +123,14 @@ enum DuplicateResolutionStatus {
   escalated
 }
 
+enum AssignmentSlaState {
+  unassigned
+  assigned
+  in_progress
+  overdue
+  escalated
+}
+
 model AdminUser {
   id            String           @id @default(cuid())
   email         String           @unique
@@ -229,11 +237,17 @@ model Event {
   description        String?
   sourceUrl          String?
   publishStatus      PublishStatus       @default(unpublished)
+  assignedReviewerId String?
+  assignedAt         DateTime?
+  escalationLevel    Int                  @default(0)
+  dueAt              DateTime?
+  slaState           AssignmentSlaState   @default(unassigned)
   publishedAt        DateTime?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
   venue              Venue?              @relation(fields: [venueId], references: [id])
   proposedChangeSets ProposedChangeSet[]
+  duplicateCandidates DuplicateCandidate[]
   versions           CanonicalRecordVersion[]
 }
 
@@ -306,6 +320,11 @@ model ProposedChangeSet {
   reviewedByUserId String?
   reviewedAt       DateTime?
   notes            String?
+  assignedReviewerId String?
+  assignedAt       DateTime?
+  escalationLevel  Int                     @default(0)
+  dueAt            DateTime?
+  slaState         AssignmentSlaState      @default(unassigned)
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
@@ -334,6 +353,11 @@ model DuplicateCandidate {
   confidenceExplanation       String?
   duplicateRiskExplanation    String?
   reviewerNote                String?
+  assignedReviewerId          String?
+  assignedAt                  DateTime?
+  escalationLevel             Int                       @default(0)
+  dueAt                       DateTime?
+  slaState                    AssignmentSlaState        @default(unassigned)
   resolutionStatus            DuplicateResolutionStatus @default(unresolved)
   resolvedByUserId            String?
   resolvedAt                  DateTime?
