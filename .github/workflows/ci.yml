@@ -24,7 +24,20 @@ jobs:
           node-version: 20
       - run: cp .env.example .env
       - name: Export local bootstrap env
-        run: cat .env >> "$GITHUB_ENV"
+        run: |
+          awk '
+            /^[[:space:]]*#/ { next }
+            /^[[:space:]]*$/ { next }
+            /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=.*/ {
+              sub(/^[[:space:]]*/, "", $0)
+              print
+              next
+            }
+            {
+              printf "Invalid .env line for GITHUB_ENV export: %s\n", $0 > "/dev/stderr"
+              exit 1
+            }
+          ' .env >> "$GITHUB_ENV"
       - run: docker compose up -d
       - run: npm install
       - run: npm run prisma:generate -w @artio/app
