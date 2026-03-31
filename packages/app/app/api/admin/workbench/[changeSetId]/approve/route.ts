@@ -22,7 +22,8 @@ export async function POST(request: Request, { params }: { params: { changeSetId
     where: { id: params.changeSetId },
     include: {
       fieldReviews: true,
-      sourceDocument: true
+      sourceDocument: true,
+      duplicateCandidates: true
     }
   });
 
@@ -32,7 +33,8 @@ export async function POST(request: Request, { params }: { params: { changeSetId
 
   const publishGate = checkPublishReadiness({
     proposedDataJson: asRecord(changeSet.proposedDataJson),
-    fieldReviews: changeSet.fieldReviews
+    fieldReviews: changeSet.fieldReviews,
+    duplicateCandidates: changeSet.duplicateCandidates
   });
 
   if (!publishGate.ready) {

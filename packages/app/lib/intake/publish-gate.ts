@@ -1,3 +1,5 @@
+import { summarizeDuplicateBlockers, type DuplicateCandidateLike } from './duplicate-resolution';
+
 export interface PublishGateResult {
   ready: boolean;
   blockers: string[];
@@ -7,6 +9,7 @@ export interface PublishGateResult {
 export type ProposedChangeSetWithReviews = {
   proposedDataJson: Record<string, unknown> | null;
   fieldReviews: Array<{ fieldPath: string; decision: string | null; confidence: number | null }>;
+  duplicateCandidates?: DuplicateCandidateLike[];
 };
 
 export function checkPublishReadiness(proposedChangeSet: ProposedChangeSetWithReviews): PublishGateResult {
@@ -41,6 +44,9 @@ export function checkPublishReadiness(proposedChangeSet: ProposedChangeSetWithRe
       warnings.push(`Low-confidence field accepted: ${review.fieldPath}.`);
     }
   }
+
+  const duplicateSummary = summarizeDuplicateBlockers(proposedChangeSet.duplicateCandidates ?? []);
+  blockers.push(...duplicateSummary.blockers);
 
   return {
     ready: blockers.length === 0,

@@ -115,6 +115,14 @@ enum PublishStatus {
   rolled_back
 }
 
+enum DuplicateResolutionStatus {
+  unresolved
+  resolved_merge
+  resolved_separate
+  false_positive
+  escalated
+}
+
 model AdminUser {
   id            String           @id @default(cuid())
   email         String           @unique
@@ -305,9 +313,39 @@ model ProposedChangeSet {
   extractionRun  ExtractionRun? @relation(fields: [extractionRunId], references: [id])
   matchedEvent   Event?         @relation(fields: [matchedEventId], references: [id])
   fieldReviews   FieldReview[]
+  duplicateCandidates DuplicateCandidate[]
 
   @@index([reviewStatus, createdAt(sort: Desc)])
   @@index([sourceDocumentId])
+}
+
+model DuplicateCandidate {
+  id                          String                    @id @default(cuid())
+  proposedChangeSetId         String
+  canonicalEventId            String?
+  recordType                  String                    @default("Event")
+  source                      String?
+  matchConfidence             Float                     @default(0)
+  corroborationSourceCount    Int                       @default(0)
+  corroborationConfidence     Float                     @default(0)
+  conflictingSourceCount      Int                       @default(0)
+  unresolvedBlockerCount      Int                       @default(0)
+  fieldCorroborationJson      Json?
+  confidenceExplanation       String?
+  duplicateRiskExplanation    String?
+  reviewerNote                String?
+  resolutionStatus            DuplicateResolutionStatus @default(unresolved)
+  resolvedByUserId            String?
+  resolvedAt                  DateTime?
+  createdAt                   DateTime                  @default(now())
+  updatedAt                   DateTime                  @updatedAt
+
+  proposedChangeSet ProposedChangeSet @relation(fields: [proposedChangeSetId], references: [id], onDelete: Cascade)
+  canonicalEvent    Event?            @relation(fields: [canonicalEventId], references: [id])
+
+  @@index([resolutionStatus, updatedAt(sort: Desc)])
+  @@index([proposedChangeSetId, resolutionStatus])
+  @@index([canonicalEventId])
 }
 
 model FieldReview {

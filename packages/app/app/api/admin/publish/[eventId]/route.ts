@@ -21,7 +21,8 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
     },
     include: {
       fieldReviews: true,
-      extractionRun: true
+      extractionRun: true,
+      duplicateCandidates: true
     },
     orderBy: { reviewedAt: 'desc' }
   });
@@ -35,7 +36,8 @@ export async function GET(_request: Request, { params }: { params: { eventId: st
   const evidenceMap = asRecord(latestApprovedChangeSet.extractionRun?.evidenceJson);
   const readiness = checkPublishReadiness({
     proposedDataJson: asRecord(latestApprovedChangeSet.proposedDataJson),
-    fieldReviews: latestApprovedChangeSet.fieldReviews
+    fieldReviews: latestApprovedChangeSet.fieldReviews,
+    duplicateCandidates: latestApprovedChangeSet.duplicateCandidates
   });
 
   return Response.json({
@@ -83,7 +85,8 @@ export async function POST(request: Request, { params }: { params: { eventId: st
       reviewStatus: 'approved'
     },
     include: {
-      fieldReviews: true
+      fieldReviews: true,
+      duplicateCandidates: true
     },
     orderBy: { reviewedAt: 'desc' }
   });
@@ -100,11 +103,21 @@ export async function POST(request: Request, { params }: { params: { eventId: st
 
   const readiness = checkPublishReadiness({
     proposedDataJson: asRecord(latestApprovedChangeSet.proposedDataJson),
-    fieldReviews: latestApprovedChangeSet.fieldReviews
+    fieldReviews: latestApprovedChangeSet.fieldReviews,
+    duplicateCandidates: latestApprovedChangeSet.duplicateCandidates
   });
 
   if (!readiness.ready) {
-    return Response.json({ blockers: readiness.blockers, warnings: readiness.warnings }, { status: 409 });
+    return Response.json(
+      {
+        blockers: readiness.blockers,
+        warnings: readiness.warnings,
+        blockerReasons: readiness.blockers.map((blocker) =>
+          blocker.includes('duplicate') ? 'duplicate_blocker' : blocker.includes('corrobor') ? 'corroboration_conflict' : 'field_review'
+        )
+      },
+      { status: 409 }
+    );
   }
 
   const now = new Date();
@@ -147,7 +160,15 @@ export async function POST(request: Request, { params }: { params: { eventId: st
           description: publishedEvent.description,
           sourceUrl: publishedEvent.sourceUrl,
           publishStatus: publishedEvent.publishStatus,
-          publishedAt: publishedEvent.publishedAt
+          publishedAt: publishedEvent.publishedAt,
+          duplicateResolution: (latestApprovedChangeSet.duplicateCandidates ?? []).map((candidate) => ({
+            candidateId: candidate.id,
+            resolutionStatus: candidate.resolutionStatus,
+            reviewerNote: candidate.reviewerNote,
+            canonicalEventId: candidate.canonicalEventId,
+            corroborationSourceCount: candidate.corroborationSourceCount,
+            conflictingSourceCount: candidate.conflictingSourceCount
+          }))
         },
         changeSummary: releaseSummary ?? null,
         sourceDocumentId: latestApprovedChangeSet.sourceDocumentId,

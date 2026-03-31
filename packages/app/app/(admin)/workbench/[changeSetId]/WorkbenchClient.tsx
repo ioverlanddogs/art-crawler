@@ -341,6 +341,7 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
 }
 
 function ValidationSummaryPanel({ validationSummary }: { validationSummary: { blockers: string[]; warnings: string[] } }) {
+  const hasDuplicateBlocker = validationSummary.blockers.some((blocker) => blocker.toLowerCase().includes('duplicate') || blocker.toLowerCase().includes('corrobor'));
   return (
     <div className="stack">
       {validationSummary.blockers.length > 0 ? (
@@ -358,6 +359,15 @@ function ValidationSummaryPanel({ validationSummary }: { validationSummary: { bl
             <li key={warning}>{warning}</li>
           ))}
         </ul>
+      ) : null}
+      {hasDuplicateBlocker ? (
+        <p className="muted">
+          Duplicate/corroboration blocker detected. Resolve in the{' '}
+          <a className="inline-link" href="/duplicates">
+            duplicates queue
+          </a>
+          .
+        </p>
       ) : null}
     </div>
   );

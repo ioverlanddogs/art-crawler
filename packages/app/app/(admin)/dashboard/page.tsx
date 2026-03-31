@@ -35,7 +35,7 @@ export default async function DashboardPage() {
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry, extractionWithEvidence, extractionTotal, eventsReadyToPublish, eventsPublishedThisWeek] =
+  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry, extractionWithEvidence, extractionTotal, eventsReadyToPublish, eventsPublishedThisWeek, unresolvedDuplicates, unresolvedCorroborationConflicts] =
     (await Promise.all([
       safeQuery(() => prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { activatedAt: 'desc' } }), null),
       safeQuery(() => prisma.modelVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { promotedAt: 'desc' } }), null),
@@ -90,7 +90,9 @@ export default async function DashboardPage() {
       safeQuery(() => prisma.extractionRun.count({ where: { evidenceJson: { not: Prisma.AnyNull } } }), 0),
       safeQuery(() => prisma.extractionRun.count(), 0),
       safeQuery(() => prisma.event.count({ where: { publishStatus: 'ready' } }), 0),
-      safeQuery(() => prisma.event.count({ where: { publishStatus: 'published', publishedAt: { gte: since7d } } }), 0)
+      safeQuery(() => prisma.event.count({ where: { publishStatus: 'published', publishedAt: { gte: since7d } } }), 0),
+      safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved' } }), 0),
+      safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved', OR: [{ conflictingSourceCount: { gt: 0 } }, { unresolvedBlockerCount: { gt: 0 } }] } }), 0)
     ])) as any;
 
   const topFailingStage = failureByStage[0]?.stage ?? null;
@@ -200,6 +202,14 @@ export default async function DashboardPage() {
           ctaLabel="Open pending queue"
         />
         <SlaTimerCard label="Queue SLA timer" ageMinutes={oldestPendingMinutes} targetMinutes={120} inferred />
+        <MetricCard
+          label="Duplicate risk"
+          value={unresolvedDuplicates}
+          state={unresolvedCorroborationConflicts > 0 ? 'failing' : unresolvedDuplicates > 0 ? 'degraded' : 'healthy'}
+          detail={`${unresolvedCorroborationConflicts} with corroboration conflicts`}
+          href="/duplicates?filter=publish-blocked"
+          ctaLabel="Open duplicates queue"
+        />
       </div>
 
       <div className="three-col">

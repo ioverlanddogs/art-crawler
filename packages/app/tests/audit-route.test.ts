@@ -56,6 +56,22 @@ describe('audit route', () => {
     expect(payload.data[0].eventType).toBe('rollback_execution');
   });
 
+  test('maps duplicate telemetry stages into duplicate audit events', async () => {
+    prismaMock.canonicalRecordVersion.findMany.mockResolvedValueOnce([]);
+    prismaMock.proposedChangeSet.findMany.mockResolvedValueOnce([]);
+    prismaMock.ingestionJob.findMany.mockResolvedValueOnce([]);
+    prismaMock.pipelineTelemetry.findMany.mockResolvedValueOnce([
+      { id: 'pt-dup', stage: 'duplicate_resolved_merge', status: 'success', detail: 'merged into canonical', entityId: 'dup-1', entityType: 'DuplicateCandidate', configVersion: null, durationMs: null, metadata: {}, createdAt: new Date('2026-01-01T00:00:00.000Z') }
+    ]);
+
+    const { GET } = await import('@/app/api/admin/audit/route');
+    const response = await GET(new Request('http://localhost/api/admin/audit?page=1&pageSize=50'));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.data[0].eventType).toBe('duplicate_resolved_merge');
+  });
+
   test('entityId filter limits results', async () => {
     prismaMock.canonicalRecordVersion.findMany.mockResolvedValueOnce([
       { id: 'v1', eventId: 'evt-1', versionNumber: 1, changeSummary: null, sourceDocumentId: null, proposedChangeSetId: null, publishBatchId: null, createdByUserId: null, createdAt: new Date('2026-01-01T00:00:00.000Z') }

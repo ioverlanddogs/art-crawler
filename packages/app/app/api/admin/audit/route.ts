@@ -31,7 +31,19 @@ export async function GET(request: Request) {
   const eventVersionWhere: Record<string, unknown> = {};
   const changeSetWhere: Record<string, unknown> = { reviewStatus: { in: ['approved', 'merged', 'rejected'] } };
   const ingestionWhere: Record<string, unknown> = {};
-  const telemetryWhere: Record<string, unknown> = { stage: { in: ['ai_extraction', 'rollback'] } };
+  const telemetryWhere: Record<string, unknown> = {
+    stage: {
+      in: [
+        'ai_extraction',
+        'rollback',
+        'duplicate_detected',
+        'duplicate_resolved_merge',
+        'duplicate_resolved_separate',
+        'duplicate_false_positive',
+        'corroboration_conflict'
+      ]
+    }
+  };
 
   if (entityType === 'Event' && entityId) {
     eventVersionWhere.eventId = entityId;
@@ -106,7 +118,12 @@ export async function GET(request: Request) {
     })),
     ...telemetry.map((row) => ({
       id: `telemetry:${row.id}`,
-      eventType: row.stage === 'rollback' ? 'rollback_execution' : 'extraction_run',
+      eventType:
+        row.stage === 'rollback'
+          ? 'rollback_execution'
+          : row.stage === 'ai_extraction'
+            ? 'extraction_run'
+            : row.stage,
       entityId: row.entityId ?? 'unknown',
       entityType: row.entityType ?? 'Unknown',
       actorUserId: null,

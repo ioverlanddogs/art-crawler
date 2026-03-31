@@ -34,6 +34,13 @@ export default async function PublishQueuePage() {
       <PageHeader title="Publish queue" description="Explicit release governance with reversible history." />
 
       <SectionCard title="Ready to publish" subtitle="Each publish action requires a release summary and links into audit trail.">
+        <p className="muted">
+          Duplicate and corroboration blockers must be resolved before publish.{' '}
+          <Link href="/duplicates" className="inline-link">
+            Open duplicates queue
+          </Link>
+          .
+        </p>
         {readyEvents.length === 0 ? (
           <EmptyState title="No events are ready" description="Approved records will appear here once they pass readiness checks." />
         ) : (

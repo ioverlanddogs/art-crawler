@@ -15,7 +15,7 @@ export default async function PublishDetailPage({ params }: { params: { eventId:
   const [changeSet, versions] = await Promise.all([
     prisma.proposedChangeSet.findFirst({
       where: { matchedEventId: event.id, reviewStatus: 'approved' },
-      include: { fieldReviews: true, extractionRun: true },
+      include: { fieldReviews: true, extractionRun: true, duplicateCandidates: true },
       orderBy: { reviewedAt: 'desc' }
     }),
     prisma.canonicalRecordVersion.findMany({ where: { eventId: event.id }, orderBy: { versionNumber: 'desc' }, take: 10 })
@@ -32,7 +32,8 @@ export default async function PublishDetailPage({ params }: { params: { eventId:
 
   const publishGate = checkPublishReadiness({
     proposedDataJson: asRecord(changeSet.proposedDataJson),
-    fieldReviews: changeSet.fieldReviews
+    fieldReviews: changeSet.fieldReviews,
+    duplicateCandidates: changeSet.duplicateCandidates
   });
 
   return (
@@ -76,6 +77,15 @@ export default async function PublishDetailPage({ params }: { params: { eventId:
       <SectionCard title="Readiness warnings + blockers">
         {publishGate.blockers.length ? <ul className="tone-danger alert-banner">{publishGate.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul> : <p className="tone-success alert-banner">No blockers.</p>}
         {publishGate.warnings.length ? <ul className="tone-warning alert-banner">{publishGate.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul> : null}
+        {changeSet.duplicateCandidates.some((candidate) => candidate.resolutionStatus === 'unresolved') ? (
+          <p className="muted">
+            Duplicate/corroboration resolution is still open.{' '}
+            <Link href="/duplicates" className="inline-link">
+              Open duplicates queue
+            </Link>
+            .
+          </p>
+        ) : null}
       </SectionCard>
 
       <RollbackPreviewPanel eventId={event.id} versions={versions.map((v) => ({ versionNumber: v.versionNumber, createdAt: v.createdAt.toISOString(), changeSummary: v.changeSummary }))} />

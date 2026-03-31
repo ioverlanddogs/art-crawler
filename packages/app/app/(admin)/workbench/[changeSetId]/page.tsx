@@ -15,7 +15,8 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
       fieldReviews: true,
       sourceDocument: true,
       extractionRun: true,
-      matchedEvent: true
+      matchedEvent: true,
+      duplicateCandidates: true
     }
   });
 
@@ -60,7 +61,11 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
         },
         currentUserRole: session.user.role,
         notes: changeSet.notes ?? null,
-        validationSummary: checkPublishReadiness({ proposedDataJson: proposedData, fieldReviews: changeSet.fieldReviews }),
+        validationSummary: checkPublishReadiness({
+          proposedDataJson: proposedData,
+          fieldReviews: changeSet.fieldReviews,
+          duplicateCandidates: changeSet.duplicateCandidates
+        }),
         latestIngestionJobId: latestIngestionJob?.id ?? null
       }}
     />
