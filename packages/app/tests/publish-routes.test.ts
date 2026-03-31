@@ -126,7 +126,34 @@ describe('publish routes', () => {
     });
 
     expect(response.status).toBe(409);
-    await expect(response.json()).resolves.toEqual({ blockers: ['missing title'], warnings: ['low confidence'] });
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({ blockers: ['missing title'], warnings: ['low confidence'], blockerReasons: expect.any(Array) })
+    );
+  });
+
+  test('POST /api/admin/publish/[eventId] returns structured duplicate blocker reasons', async () => {
+    prismaMock.event.findUnique.mockResolvedValueOnce({ id: 'evt-1', publishStatus: 'ready' });
+    prismaMock.proposedChangeSet.findFirst.mockResolvedValueOnce({
+      id: 'pcs-dup',
+      sourceDocumentId: 'sd-dup',
+      proposedDataJson: { title: 'Show' },
+      fieldReviews: [],
+      duplicateCandidates: [{ id: 'dup-1', resolutionStatus: 'unresolved' }]
+    });
+    checkPublishReadinessMock.mockReturnValueOnce({
+      ready: false,
+      blockers: ['1 unresolved duplicate candidate(s) require an explicit resolution.'],
+      warnings: []
+    });
+
+    const { POST } = await import('@/app/api/admin/publish/[eventId]/route');
+    const response = await POST(new Request('http://localhost/api/admin/publish/evt-1', { method: 'POST', body: '{}' }), {
+      params: { eventId: 'evt-1' }
+    });
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload.blockerReasons).toContain('duplicate_blocker');
   });
 
   test('POST /api/admin/publish/[eventId] returns 200, creates batch, and updates statuses', async () => {

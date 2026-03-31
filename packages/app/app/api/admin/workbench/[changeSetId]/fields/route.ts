@@ -18,7 +18,8 @@ export async function GET(_: Request, { params }: { params: { changeSetId: strin
       fieldReviews: true,
       sourceDocument: true,
       matchedEvent: true,
-      extractionRun: true
+      extractionRun: true,
+      duplicateCandidates: true
     }
   });
 
@@ -59,7 +60,8 @@ export async function GET(_: Request, { params }: { params: { changeSetId: strin
     Promise.resolve(
       checkPublishReadiness({
         proposedDataJson: proposedData,
-        fieldReviews: changeSet.fieldReviews
+        fieldReviews: changeSet.fieldReviews,
+        duplicateCandidates: changeSet.duplicateCandidates
       })
     )
   ]);
