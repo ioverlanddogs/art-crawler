@@ -1,9 +1,11 @@
 import { PageHeader, SectionCard, StatCard } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 
 export const dynamic = 'force-dynamic';
 
-export default async function OperationsPage() {
+export default async function OperationsPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const scopeContext = resolveScopeContext(searchParams);
   const now = new Date();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
@@ -18,8 +20,13 @@ export default async function OperationsPage() {
   ]);
 
   const nameFor = (id: string | null) => reviewers.find((reviewer) => reviewer.id === id)?.name ?? reviewers.find((reviewer) => reviewer.id === id)?.email ?? id ?? 'unassigned';
+  const scopedOpenWork = filterByScope(openWork, scopeContext, (row) => ({ assignedReviewerId: row.assignedReviewerId }));
+  const scopedOverdue = filterByScope(overdueByReviewer, scopeContext, (row) => ({ assignedReviewerId: row.assignedReviewerId }));
+  const scopedEscalations = filterByScope(escalationHotspots, scopeContext, (row) => ({ assignedReviewerId: row.assignedReviewerId }));
+  const scopedBlockers = filterByScope(blockerOwners, scopeContext, (row) => ({ assignedReviewerId: row.assignedReviewerId }));
+  const scopedDuplicateOwnership = filterByScope(duplicateOwnership, scopeContext, (row) => ({ assignedReviewerId: row.assignedReviewerId }));
   const avgResolutionMinutes = resolvedRows.length
-    ? Math.round(resolvedRows.reduce((acc, row) => acc + ((row.reviewedAt?.getTime() ?? row.createdAt.getTime()) - row.createdAt.getTime()), 0) / resolvedRows.length / 60000)
+    ? Math.round(resolvedRows.reduce((acc, row) => acc + ((row.reviewedAt?.getTime() ?? row.createdAt.getTime()) - row.createdAt.getTime()), 0) / Math.max(1, resolvedRows.length) / 60000)
     : 0;
 
   return (
@@ -27,16 +34,16 @@ export default async function OperationsPage() {
       <PageHeader title="Reviewer operations" description="Team-level ownership, SLA, and workload balance across moderation queues." />
 
       <div className="stats-grid">
-        <StatCard label="Reviewer queue load" value={openWork.reduce((acc, row) => acc + row._count._all, 0)} />
-        <StatCard label="Overdue items" value={overdueByReviewer.reduce((acc, row) => acc + row._count._all, 0)} />
-        <StatCard label="Escalation hotspots" value={escalationHotspots.reduce((acc, row) => acc + row._count._all, 0)} />
+        <StatCard label="Reviewer queue load" value={scopedOpenWork.reduce((acc, row) => acc + row._count._all, 0)} />
+        <StatCard label="Overdue items" value={scopedOverdue.reduce((acc, row) => acc + row._count._all, 0)} />
+        <StatCard label="Escalation hotspots" value={scopedEscalations.reduce((acc, row) => acc + row._count._all, 0)} />
         <StatCard label="Avg resolution time" value={`${avgResolutionMinutes}m`} />
       </div>
 
       <div className="two-col">
         <SectionCard title="Top blocker owners">
           <ul className="timeline">
-            {blockerOwners.sort((a, b) => b._count._all - a._count._all).slice(0, 8).map((row) => (
+            {scopedBlockers.sort((a, b) => b._count._all - a._count._all).slice(0, 8).map((row) => (
               <li key={`blocker-${row.assignedReviewerId ?? 'unassigned'}`}>
                 <strong>{nameFor(row.assignedReviewerId)}</strong>
                 <p className="kpi-note">{row._count._all} publish blockers</p>
@@ -47,7 +54,7 @@ export default async function OperationsPage() {
 
         <SectionCard title="Duplicate queue ownership">
           <ul className="timeline">
-            {duplicateOwnership.sort((a, b) => b._count._all - a._count._all).slice(0, 8).map((row) => (
+            {scopedDuplicateOwnership.sort((a, b) => b._count._all - a._count._all).slice(0, 8).map((row) => (
               <li key={`dup-${row.assignedReviewerId ?? 'unassigned'}`}>
                 <strong>{nameFor(row.assignedReviewerId)}</strong>
                 <p className="kpi-note">{row._count._all} unresolved duplicate items</p>

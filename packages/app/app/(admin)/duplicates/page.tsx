@@ -4,6 +4,7 @@ import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
+import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,6 +16,7 @@ export default async function DuplicateQueuePage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   await requireRole(['viewer', 'moderator', 'operator', 'admin']);
+  const scopeContext = resolveScopeContext(searchParams);
   const activeFilter = asString(searchParams?.filter);
   const where: Record<string, unknown> = { resolutionStatus: 'unresolved' };
   if (activeFilter === 'high-confidence') where.matchConfidence = { gte: 0.8 };
@@ -26,7 +28,7 @@ export default async function DuplicateQueuePage({
     prisma.duplicateCandidate.findMany({
     where,
     include: {
-      proposedChangeSet: { select: { id: true, reviewStatus: true, sourceDocument: { select: { sourceUrl: true } } } },
+      proposedChangeSet: { select: { id: true, reviewStatus: true, sourceDocument: { select: { sourceUrl: true, sourceType: true } } } },
       canonicalEvent: { select: { id: true, title: true } }
     },
     orderBy: [{ unresolvedBlockerCount: 'desc' }, { matchConfidence: 'desc' }, { updatedAt: 'desc' }],
@@ -35,9 +37,14 @@ export default async function DuplicateQueuePage({
     prisma.adminUser.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true, email: true }, orderBy: { email: 'asc' }, take: 100 })
   ]);
 
-  const byHotspot = groupByKey(candidates, (row) => row.source ?? 'unknown');
-  const byCanonical = groupByKey(candidates, (row) => row.canonicalEventId ?? 'none');
-  const byConflict = groupByKey(candidates, (row) =>
+  const scopedCandidates = filterByScope(candidates, scopeContext, (row) => ({
+    assignedReviewerId: row.assignedReviewerId,
+    sourceGroup: row.source ?? null,
+    sourceType: row.proposedChangeSet?.sourceDocument?.sourceType ?? null
+  }));
+  const byHotspot = groupByKey(scopedCandidates, (row) => row.source ?? 'unknown');
+  const byCanonical = groupByKey(scopedCandidates, (row) => row.canonicalEventId ?? 'none');
+  const byConflict = groupByKey(scopedCandidates, (row) =>
     row.unresolvedBlockerCount > 0 ? 'publish-blocker' : row.conflictingSourceCount > 0 ? 'conflicting-values' : 'low-corroboration'
   );
 
@@ -47,9 +54,9 @@ export default async function DuplicateQueuePage({
 
       <SectionCard title="Queue filters">
         <div className="filters-row">
-          <Link href="/duplicates" className={`action-button ${!activeFilter ? 'variant-primary' : 'variant-secondary'}`}>All unresolved</Link>
+          <Link href={withScopeQuery('/duplicates', scopeContext.scope)} className={`action-button ${!activeFilter ? 'variant-primary' : 'variant-secondary'}`}>All unresolved</Link>
           {FILTERS.map((filter) => (
-            <Link key={filter} href={`/duplicates?filter=${filter}`} className={`action-button ${activeFilter === filter ? 'variant-primary' : 'variant-secondary'}`}>
+            <Link key={filter} href={withScopeQuery(`/duplicates?filter=${filter}`, scopeContext.scope)} className={`action-button ${activeFilter === filter ? 'variant-primary' : 'variant-secondary'}`}>
               {filter}
             </Link>
           ))}
@@ -70,7 +77,7 @@ export default async function DuplicateQueuePage({
       </SectionCard>
 
       <SectionCard title="Unresolved duplicate candidates" subtitle="Candidates here block publish if unresolved blockers/conflicts remain.">
-        {candidates.length === 0 ? (
+        {scopedCandidates.length === 0 ? (
           <EmptyState title="No unresolved candidates" description="Duplicate blockers are currently clear." />
         ) : (
           <table className="data-table">
@@ -86,7 +93,7 @@ export default async function DuplicateQueuePage({
               </tr>
             </thead>
             <tbody>
-              {candidates.map((row) => (
+              {scopedCandidates.map((row) => (
                 <tr key={row.id}>
                   <td><code>{row.id}</code></td>
                   <td>{Math.round(row.matchConfidence * 100)}%</td>
@@ -96,7 +103,7 @@ export default async function DuplicateQueuePage({
                   <td>{row.corroborationSourceCount} src · {Math.round(row.corroborationConfidence * 100)}%</td>
                   <td>
                     <div className="filters-row">
-                      <Link href={`/duplicates/${row.id}`} className="action-button variant-primary">Open compare</Link>
+                      <Link href={withScopeQuery(`/duplicates/${row.id}`, scopeContext.scope)} className="action-button variant-primary">Open compare</Link>
                       <AssignmentControls endpoint={`/api/admin/duplicates/${row.id}/assignment`} reviewers={reviewers} currentAssigneeId={row.assignedReviewerId} />
                     </div>
                   </td>

@@ -3,7 +3,8 @@
 import type { ReactNode } from 'react';
 import { useMemo } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ADMIN_SCOPE_VALUES, parseAdminScope, withScopeQuery } from '@/lib/admin/scope';
 import { AccountMenu } from './AccountMenu';
 import { ScopeBadge } from './ScopeBadge';
 import type { AdminEnvironment, AdminNavGroup, AdminUserInfo } from './types';
@@ -25,6 +26,14 @@ function roleLabel(role?: string | null) {
   return 'Unscoped';
 }
 
+const SCOPE_LABELS = {
+  global: 'Global',
+  team: 'Team',
+  workspace: 'Workspace',
+  'source-group': 'Source group',
+  'reviewer-owned': 'Reviewer owned'
+} as const;
+
 export function AdminShell({
   navGroups,
   user,
@@ -39,6 +48,9 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const scope = parseAdminScope(searchParams.get('scope') ?? undefined);
   const scopedNavGroups = navGroups
     .map((group) => ({
       ...group,
@@ -61,16 +73,29 @@ export function AdminShell({
   const envTone =
     environment === 'production' ? 'danger' : environment === 'preview' ? 'warning' : environment === 'development' ? 'info' : 'neutral';
 
+  const onScopeChange = (nextScope: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('scope', nextScope);
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
         <div className="brand">Artio Admin</div>
         <div className="role-chip">{roleLabel(user?.role)}</div>
-        <div className="tenant-selector" role="note" aria-label="Scope status">
-          <p className="muted tenant-selector-label">Workspace scope</p>
-          <p className="kpi-note">
-            Scope switching is unavailable in this release candidate. All actions currently run at the route-defined scope.
-          </p>
+        <div className="tenant-selector" role="region" aria-label="Workspace scope selector">
+          <label htmlFor="admin-scope-selector" className="muted tenant-selector-label">
+            Workspace scope
+          </label>
+          <select id="admin-scope-selector" className="select" value={scope} onChange={(event) => onScopeChange(event.target.value)}>
+            {ADMIN_SCOPE_VALUES.map((scopeOption) => (
+              <option value={scopeOption} key={scopeOption}>
+                {SCOPE_LABELS[scopeOption]}
+              </option>
+            ))}
+          </select>
+          <p className="kpi-note">All dashboard metrics, queues, blockers, publish governance, and audit views now follow this scope.</p>
         </div>
         {scopedNavGroups.map((group) => (
           <div key={group.label} className="nav-group">
@@ -79,7 +104,7 @@ export function AdminShell({
               {group.items.map((item) => {
                 const active = pathname === item.href;
                 return (
-                  <Link key={item.href} href={item.href} className={`nav-link ${active ? 'active' : ''}`}>
+                  <Link key={item.href} href={withScopeQuery(item.href, scope)} className={`nav-link ${active ? 'active' : ''}`}>
                     <span>{item.label}</span>
                     {typeof item.badgeCount === 'number' ? <span className="nav-badge">{item.badgeCount}</span> : null}
                   </Link>
@@ -99,19 +124,19 @@ export function AdminShell({
               {typeof opsSignals?.failureCount24h === 'number' ? opsSignals.failureCount24h : 'N/A'}
             </p>
             <div className="filters-row">
-              <ScopeBadge scope="global" />
-              <p className="kpi-note">Scope selection is intentionally disabled until full route/data scoping is shipped.</p>
+              <ScopeBadge scope={scope} />
+              <p className="kpi-note">Active scope: {SCOPE_LABELS[scope]}.</p>
             </div>
           </div>
           <div className="topbar-actions">
             <p className={`env-badge tone-${envTone}`}>Environment: {envLabel}</p>
             {canOpenModeration ? (
-              <Link href="/moderation" className="action-button variant-secondary">
+              <Link href={withScopeQuery('/moderation', scope)} className="action-button variant-secondary">
                 Open Queue
               </Link>
             ) : null}
             {canInvestigate ? (
-              <Link href="/investigations" className="action-button variant-secondary">
+              <Link href={withScopeQuery('/investigations', scope)} className="action-button variant-secondary">
                 Investigate
               </Link>
             ) : null}

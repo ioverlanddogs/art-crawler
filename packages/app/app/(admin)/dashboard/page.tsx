@@ -25,6 +25,7 @@ import {
   aggregateSourceLeaderboard,
   calculateDuplicateBacklog
 } from '@/lib/admin/data-health';
+import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 import { prisma } from '@/lib/db';
 import { isAiExtractionEnabled } from '@/lib/env';
 import { Prisma } from '@/lib/prisma-client';
@@ -42,18 +43,18 @@ type AlertItem = {
 
 const SEVERITY_ORDER: Record<AlertItem['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const scopeContext = resolveScopeContext(searchParams);
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failure24h, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry, extractionWithEvidence, extractionTotal, eventsReadyToPublish, eventsPublishedThisWeek, unresolvedDuplicates, unresolvedCorroborationConflicts, duplicateSnapshots, pipelineWindow, publishBlockerRows] =
+  const [activeConfig, activeModel, pendingModeration, pendingReview, intakeFailed, failureByStage, latestImportSuccess, backlogStats, recentBatches, importExportTelemetry, weekTelemetry, extractionWithEvidence, extractionTotal, eventsPublishedThisWeek, duplicateSnapshots, pipelineWindow, publishBlockerRows] =
     (await Promise.all([
       safeQuery(() => prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { activatedAt: 'desc' } }), null),
       safeQuery(() => prisma.modelVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { promotedAt: 'desc' } }), null),
       safeQuery(() => prisma.ingestExtractedEvent.count({ where: { status: 'PENDING' } }), 0),
       safeQuery(() => prisma.ingestionJob.count({ where: { status: 'needs_review' } }), 0),
       safeQuery(() => prisma.ingestionJob.count({ where: { status: 'failed', createdAt: { gte: since24h } } }), 0),
-      safeQuery(() => prisma.pipelineTelemetry.count({ where: { status: 'failure', createdAt: { gte: since24h } } }), 0),
       safeQuery(
         () =>
           prisma.pipelineTelemetry.groupBy({
@@ -100,10 +101,7 @@ export default async function DashboardPage() {
       ),
       safeQuery(() => prisma.extractionRun.count({ where: { evidenceJson: { not: Prisma.AnyNull } } }), 0),
       safeQuery(() => prisma.extractionRun.count(), 0),
-      safeQuery(() => prisma.event.count({ where: { publishStatus: 'ready' } }), 0),
       safeQuery(() => prisma.event.count({ where: { publishStatus: 'published', publishedAt: { gte: since7d } } }), 0),
-      safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved' } }), 0),
-      safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved', OR: [{ conflictingSourceCount: { gt: 0 } }, { unresolvedBlockerCount: { gt: 0 } }] } }), 0),
       safeQuery(
         () =>
           prisma.duplicateCandidate.findMany({
@@ -111,12 +109,14 @@ export default async function DashboardPage() {
             orderBy: { createdAt: 'desc' },
             select: {
               source: true,
+              assignedReviewerId: true,
               resolutionStatus: true,
               matchConfidence: true,
               unresolvedBlockerCount: true,
               conflictingSourceCount: true,
+              dueAt: true,
               createdAt: true,
-              proposedChangeSet: { select: { sourceDocument: { select: { sourceUrl: true } } } }
+              proposedChangeSet: { select: { sourceDocument: { select: { sourceUrl: true, sourceType: true } } } }
             }
           }),
         []
@@ -136,7 +136,8 @@ export default async function DashboardPage() {
             take: 600,
             select: {
               id: true,
-              sourceDocument: { select: { sourceUrl: true } },
+              sourceDocument: { select: { sourceUrl: true, sourceType: true } },
+              assignedReviewerId: true,
               fieldReviews: { select: { decision: true, confidence: true } },
               duplicateCandidates: { select: { resolutionStatus: true, conflictingSourceCount: true, unresolvedBlockerCount: true } }
             }
@@ -145,11 +146,10 @@ export default async function DashboardPage() {
       )
     ])) as any;
 
-  const [overdueQueueCount, oldestUnassignedItem, avgReviewRows, duplicateSlaBreaches, blockerRows, reviewerLeaderboard] = await Promise.all([
+  const [overdueQueueCount, oldestUnassignedItem, avgReviewRows, blockerRows, reviewerLeaderboard] = await Promise.all([
     safeQuery(() => prisma.proposedChangeSet.count({ where: { reviewStatus: { in: ['draft', 'in_review'] }, dueAt: { lt: new Date() } } }), 0),
     safeQuery(() => prisma.proposedChangeSet.findFirst({ where: { reviewStatus: { in: ['draft', 'in_review'] }, assignedReviewerId: null }, orderBy: { createdAt: 'asc' }, select: { id: true, createdAt: true } }), null),
     safeQuery(() => prisma.proposedChangeSet.findMany({ where: { reviewedAt: { gte: since7d, not: null } }, select: { createdAt: true, reviewedAt: true }, take: 1000 }), []),
-    safeQuery(() => prisma.duplicateCandidate.count({ where: { resolutionStatus: 'unresolved', dueAt: { lt: new Date() } } }), 0),
     safeQuery(() => prisma.event.findMany({ where: { publishStatus: { in: ['ready', 'draft'] }, assignedReviewerId: { not: null } }, select: { assignedReviewerId: true, updatedAt: true }, take: 1000 }), []),
     safeQuery(() => prisma.proposedChangeSet.groupBy({ by: ['reviewedByUserId'], where: { reviewedAt: { gte: since7d }, reviewedByUserId: { not: null } }, _count: { _all: true }, orderBy: { _count: { _all: 'desc' } }, take: 8 }), [])
   ]);
@@ -166,6 +166,28 @@ export default async function DashboardPage() {
   ).map(([owner, ages]) => ({ owner, avgHours: Math.round((ages.reduce((a, b) => a + b, 0) / Math.max(1, ages.length)) * 10) / 10, count: ages.length }))
     .sort((a, b) => b.avgHours - a.avgHours)
     .slice(0, 5);
+  const scopedDuplicates = filterByScope(duplicateSnapshots, scopeContext, (row: any) => ({
+    assignedReviewerId: row.assignedReviewerId,
+    sourceGroup: row.source ?? null,
+    sourceType: row.proposedChangeSet?.sourceDocument?.sourceType ?? null
+  }));
+  const scopedBlockers = filterByScope(publishBlockerRows, scopeContext, (row: any) => ({
+    assignedReviewerId: row.assignedReviewerId,
+    sourceType: row.sourceDocument?.sourceType ?? null
+  }));
+  const unresolvedDuplicates = scopedDuplicates.filter((row: any) => row.resolutionStatus === 'unresolved').length;
+  const unresolvedCorroborationConflicts = scopedDuplicates.filter(
+    (row: any) => row.resolutionStatus === 'unresolved' && (row.conflictingSourceCount > 0 || row.unresolvedBlockerCount > 0)
+  ).length;
+  const duplicateSlaBreaches = scopedDuplicates.filter(
+    (row: any) => row.resolutionStatus === 'unresolved' && row.dueAt && row.dueAt.getTime() < Date.now()
+  ).length;
+  const eventsReadyToPublish = scopedBlockers.length;
+  const failure24h = filterByScope(pipelineWindow, scopeContext, (row: any) => ({
+    sourceGroup: typeof row?.metadata?.source === 'string' ? row.metadata.source : null,
+    sourceType: typeof row?.metadata?.sourceType === 'string' ? row.metadata.sourceType : null,
+    assignedReviewerId: typeof row?.metadata?.assignedReviewerId === 'string' ? row.metadata.assignedReviewerId : null
+  })).filter((row: any) => row.status === 'failure').length;
   const topFailingStage = failureByStage[0]?.stage ?? null;
   const oldestPendingMinutes = backlogStats.oldestPending ? Math.floor((Date.now() - backlogStats.oldestPending.createdAt.getTime()) / 60000) : null;
 
@@ -203,7 +225,7 @@ export default async function DashboardPage() {
   const mttrSnapshot = failure24h === 0 ? 'No open failures in sample' : `${Math.max(15, Math.round((oldestPendingMinutes ?? 60) / 2))}m inferred`;
   const evidenceCoveragePercent = extractionTotal > 0 ? Math.round((extractionWithEvidence / extractionTotal) * 100) : null;
   const duplicateSummary = calculateDuplicateBacklog(
-    duplicateSnapshots.map((row: any) => ({
+    scopedDuplicates.map((row: any) => ({
       source: row.source,
       sourceUrl: row.proposedChangeSet?.sourceDocument?.sourceUrl ?? null,
       resolutionStatus: row.resolutionStatus,
@@ -214,7 +236,7 @@ export default async function DashboardPage() {
     }))
   );
   const sourceLeaderboard = aggregateSourceLeaderboard(
-    duplicateSnapshots.map((row: any) => ({
+    scopedDuplicates.map((row: any) => ({
       source: row.source,
       sourceUrl: row.proposedChangeSet?.sourceDocument?.sourceUrl ?? null,
       resolutionStatus: row.resolutionStatus,
@@ -225,7 +247,7 @@ export default async function DashboardPage() {
     }))
   ).slice(0, 6);
   const hotspotUrls = aggregateHotspotSources(
-    duplicateSnapshots.map((row: any) => ({
+    scopedDuplicates.map((row: any) => ({
       source: row.source,
       sourceUrl: row.proposedChangeSet?.sourceDocument?.sourceUrl ?? null,
       resolutionStatus: row.resolutionStatus,
@@ -242,7 +264,7 @@ export default async function DashboardPage() {
       .map((row: any) => ({ createdAt: row.createdAt, confidenceScore: Number((row as any).metadata?.confidenceScore ?? 50) }))
   );
   const blockerTrends = aggregateBlockerTrends(
-    publishBlockerRows.map((row: any) => {
+    scopedBlockers.map((row: any) => {
       const blockers: string[] = [];
       const lowConfidenceAccepted = row.fieldReviews.filter((review: any) => review.decision === 'accepted' && typeof review.confidence === 'number' && review.confidence < 0.5).length;
       const unresolvedDupes = row.duplicateCandidates.filter((candidate: any) => candidate.resolutionStatus === 'unresolved').length;

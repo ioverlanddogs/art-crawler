@@ -4,10 +4,12 @@ import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
+import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
 
 export const dynamic = 'force-dynamic';
 
-export default async function PublishQueuePage() {
+export default async function PublishQueuePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const scopeContext = resolveScopeContext(searchParams);
   const [events, recentBatches, reviewers] = await Promise.all([
     prisma.event.findMany({
       where: { publishStatus: { in: ['ready', 'draft'] } },
@@ -29,8 +31,12 @@ export default async function PublishQueuePage() {
     prisma.adminUser.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true, email: true }, orderBy: { email: 'asc' }, take: 100 })
   ]);
 
-  const readyEvents = events.filter((row) => row.publishStatus === 'ready');
-  const blocked = events
+  const scopedEvents = filterByScope(events, scopeContext, (row) => ({
+    assignedReviewerId: row.assignedReviewerId,
+    workspaceId: row.venueId
+  }));
+  const readyEvents = scopedEvents.filter((row) => row.publishStatus === 'ready');
+  const blocked = scopedEvents
     .filter((row) => row.publishStatus !== 'published')
     .map((event) => {
       const latest = event.proposedChangeSets[0];
@@ -108,10 +114,10 @@ export default async function PublishQueuePage() {
                       <td>{latest?.reviewedAt ? latest.reviewedAt.toLocaleString() : event.updatedAt.toLocaleString()}</td>
                       <td>
                         <div className="filters-row">
-                          <Link href={`/publish/${event.id}`} className="action-button variant-primary">
+                          <Link href={withScopeQuery(`/publish/${event.id}`, scopeContext.scope)} className="action-button variant-primary">
                             Review + publish
                           </Link>
-                          <Link href={`/audit?entityType=Event&entityId=${encodeURIComponent(event.id)}`} className="action-button variant-secondary">
+                          <Link href={withScopeQuery(`/audit?entityType=Event&entityId=${encodeURIComponent(event.id)}`, scopeContext.scope)} className="action-button variant-secondary">
                             Audit trail
                           </Link>
                         </div>
