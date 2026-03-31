@@ -2,6 +2,7 @@ import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, ok } from '@/lib/api/response';
 import { parsePagination } from '@/lib/api/pagination';
+import { ConfidenceBand, IngestExtractedStatus, type Prisma } from '@/generated/prisma';
 
 export async function GET(req: Request) {
   try {
@@ -23,9 +24,12 @@ export async function GET(req: Request) {
   const sort = url.searchParams.get('sort') ?? 'createdAt';
   const order = url.searchParams.get('order') === 'asc' ? 'asc' : 'desc';
 
-  const where = {
-    ...(band ? { confidenceBand: band } : {}),
-    ...(status ? { status } : {}),
+  const bandValue = band ? ConfidenceBand[band as keyof typeof ConfidenceBand] : undefined;
+  const statusValue = status ? IngestExtractedStatus[status as keyof typeof IngestExtractedStatus] : undefined;
+
+  const where: Prisma.IngestExtractedEventWhereInput = {
+    ...(bandValue ? { confidenceBand: bandValue } : {}),
+    ...(statusValue ? { status: statusValue } : {}),
     ...(source ? { source } : {}),
     ...(region ? { region } : {}),
     ...(venueId ? { venueId } : {}),
