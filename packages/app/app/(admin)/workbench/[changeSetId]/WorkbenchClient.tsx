@@ -1,6 +1,6 @@
 'use client';
 
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog, SectionCard } from '@/components/admin';
 
@@ -46,6 +46,15 @@ interface WorkbenchData {
     updatedCount: number;
     unchangedCount: number;
   };
+  currentUserRole: 'viewer' | 'moderator' | 'operator' | 'admin';
+}
+
+interface CanonicalVersion {
+  id: string;
+  versionNumber: number;
+  changeSummary: string | null;
+  createdByUserId: string | null;
+  createdAt: string;
 }
 
 export function WorkbenchClient({ initialData }: { initialData: WorkbenchData }) {
@@ -203,12 +212,14 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
         />
 
         <CanonicalComparisonPanel
+          eventId={data.matchedEventId}
           matchedEvent={data.matchedEvent}
           diffFields={data.diffResult.fields}
           mergeStrategy={mergeStrategy}
           onMergeStrategy={setMergeStrategy}
           hasMatchedEvent={Boolean(data.matchedEvent)}
           publishResult={publishResult}
+          canRollback={data.currentUserRole === 'admin'}
         />
       </div>
 
@@ -254,12 +265,16 @@ function SourceEvidencePanel({
   focusedField: string | null;
   evidenceJson: Record<string, unknown> | null;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const markRef = useRef<HTMLElement | null>(null);
   const extracted = sourceDocument.extractedText ?? '';
   const snippet = focusedField && evidenceJson ? evidenceJson[focusedField] : null;
 
-  const renderText = expanded ? extracted : extracted.slice(0, 3000);
-  const highlightedText = applyHighlight(renderText, snippet);
+  const highlightedText = applyHighlight(extracted, snippet, markRef);
+
+  useEffect(() => {
+    if (!markRef.current) return;
+    markRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [focusedField, highlightedText]);
 
   return (
     <SectionCard title="Source evidence">
@@ -272,11 +287,6 @@ function SourceEvidencePanel({
           {sourceDocument.fetchedAt ? new Date(sourceDocument.fetchedAt).toLocaleString() : '—'}
         </p>
         <pre style={{ maxHeight: 520, overflow: 'auto', whiteSpace: 'pre-wrap' }}>{highlightedText}</pre>
-        {extracted.length > 3000 ? (
-          <button type="button" className="action-button variant-secondary" onClick={() => setExpanded((value) => !value)}>
-            {expanded ? 'Show less' : 'Show more'}
-          </button>
-        ) : null}
       </div>
     </SectionCard>
   );
@@ -320,7 +330,20 @@ function ProposedFieldsPanel({
               onMouseEnter={() => onFocus(index)}
             >
               <div className="filters-row" style={{ justifyContent: 'space-between' }}>
-                <code>{field.fieldPath}</code>
+                <div style={{ width: '100%' }}>
+                  <code>{field.fieldPath}</code>
+                  <div style={{ width: '100%', height: 4, borderRadius: 999, background: 'rgba(255,255,255,0.08)', marginTop: 4 }}>
+                    <div
+                      aria-label={`Confidence: ${formatConfidenceLabel(review?.confidence ?? null)}`}
+                      style={{
+                        width: `${confidencePercent(review?.confidence ?? null)}%`,
+                        height: '100%',
+                        borderRadius: 999,
+                        background: confidenceColor(review?.confidence ?? null)
+                      }}
+                    />
+                  </div>
+                </div>
                 <span className={`status-badge ${confidenceTone(review?.confidence ?? null)}`}>
                   {formatConfidence(review?.confidence ?? null)}
                 </span>
@@ -355,20 +378,48 @@ function ProposedFieldsPanel({
 }
 
 function CanonicalComparisonPanel({
+  eventId,
   matchedEvent,
   diffFields,
   mergeStrategy,
   onMergeStrategy,
   hasMatchedEvent,
-  publishResult
+  publishResult,
+  canRollback
 }: {
+  eventId: string | null;
   matchedEvent: Record<string, unknown> | null;
   diffFields: DiffField[];
   mergeStrategy: 'create_new' | 'merge_existing';
   onMergeStrategy: (strategy: 'create_new' | 'merge_existing') => void;
   hasMatchedEvent: boolean;
   publishResult: { blockers: string[]; warnings: string[] } | null;
+  canRollback: boolean;
 }) {
+  const [versions, setVersions] = useState<CanonicalVersion[]>([]);
+  const [rollbackReason, setRollbackReason] = useState('');
+
+  useEffect(() => {
+    if (!eventId) return;
+    void fetch(`/api/admin/publish/${eventId}/versions`, { cache: 'no-store' })
+      .then((response) => (response.ok ? response.json() : { versions: [] }))
+      .then((payload: { versions?: CanonicalVersion[] }) => setVersions((payload.versions ?? []).slice(0, 5)));
+  }, [eventId]);
+
+  async function rollbackTo(versionNumber: number) {
+    if (!eventId || !rollbackReason.trim()) return;
+    const response = await fetch(`/api/admin/publish/${eventId}/rollback`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ versionNumber, reason: rollbackReason.trim() })
+    });
+    if (response.ok) {
+      setRollbackReason('');
+      const payload = await fetch(`/api/admin/publish/${eventId}/versions`, { cache: 'no-store' }).then((res) => res.json());
+      setVersions((payload.versions ?? []).slice(0, 5));
+    }
+  }
+
   return (
     <SectionCard title="Canonical comparison">
       <div className="stack">
@@ -437,6 +488,33 @@ function CanonicalComparisonPanel({
             </ul>
           ) : null}
         </div>
+
+        {eventId ? (
+          <div className="stack">
+            <h3>Version history</h3>
+            {canRollback ? (
+              <input
+                className="input"
+                value={rollbackReason}
+                onChange={(event) => setRollbackReason(event.target.value)}
+                placeholder="Rollback reason"
+              />
+            ) : null}
+            {versions.map((version) => (
+              <div key={version.id} className="filters-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>
+                  v{version.versionNumber} · {new Date(version.createdAt).toLocaleString()} · {version.createdByUserId ?? 'system'} ·{' '}
+                  {version.changeSummary ?? 'No summary'}
+                </span>
+                {canRollback ? (
+                  <button type="button" className="action-button variant-secondary" onClick={() => void rollbackTo(version.versionNumber)}>
+                    Rollback to this version
+                  </button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
     </SectionCard>
   );
@@ -456,7 +534,7 @@ function stringifyValue(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function applyHighlight(text: string, snippet: unknown): ReactNode {
+function applyHighlight(text: string, snippet: unknown, markRef: { current: HTMLElement | null }): ReactNode {
   if (!snippet || typeof snippet !== 'string') {
     return text;
   }
@@ -467,7 +545,7 @@ function applyHighlight(text: string, snippet: unknown): ReactNode {
   return (
     <>
       {text.slice(0, index)}
-      <mark>{text.slice(index, index + snippet.length)}</mark>
+      <mark ref={markRef}>{text.slice(index, index + snippet.length)}</mark>
       {text.slice(index + snippet.length)}
     </>
   );
@@ -483,6 +561,22 @@ function confidenceTone(confidence: number | null): string {
   if (confidence >= 0.75) return 'tone-success';
   if (confidence >= 0.5) return 'tone-warning';
   return 'tone-danger';
+}
+
+function confidencePercent(confidence: number | null): number {
+  if (confidence == null) return 0;
+  return Math.max(0, Math.min(100, Math.round(confidence * 100)));
+}
+
+function formatConfidenceLabel(confidence: number | null): string {
+  return `${confidencePercent(confidence)}%`;
+}
+
+function confidenceColor(confidence: number | null): string {
+  if (confidence == null) return '#6b7280';
+  if (confidence >= 0.75) return '#16a34a';
+  if (confidence >= 0.5) return '#d97706';
+  return '#dc2626';
 }
 
 function decisionTone(decision: FieldDecision): string {
