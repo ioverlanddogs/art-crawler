@@ -23,6 +23,10 @@ const prismaMock = {
     create: vi.fn(),
     findMany: vi.fn()
   },
+  canonicalRecordVersion: {
+    findFirst: vi.fn(),
+    create: vi.fn()
+  },
   fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
   ingestionJob: {
     create: vi.fn(),
@@ -135,6 +139,8 @@ describe('publish routes', () => {
     });
     prismaMock.publishBatch.create.mockResolvedValueOnce({ id: 'pb-1' });
     prismaMock.event.update.mockResolvedValueOnce({ id: 'evt-1' });
+    prismaMock.canonicalRecordVersion.findFirst.mockResolvedValueOnce(null);
+    prismaMock.canonicalRecordVersion.create.mockResolvedValueOnce({ id: 'v-1' });
     prismaMock.ingestionJob.updateMany.mockResolvedValueOnce({ count: 1 });
 
     const { POST } = await import('@/app/api/admin/publish/[eventId]/route');

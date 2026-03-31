@@ -28,6 +28,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         { href: '/intake', label: 'Intake', roles: ['admin', 'operator', 'moderator'] },
         { href: '/moderation', label: 'Moderation Queue', badgeCount: pendingCount, roles: ['admin', 'moderator'] },
         { href: '/publish', label: 'Publish', roles: ['admin', 'operator', 'moderator'] },
+        { href: '/audit', label: 'Audit', roles: ['admin', 'operator', 'moderator', 'viewer'] },
         { href: '/pipeline', label: 'Pipeline', roles: ['admin', 'operator'] }
       ]
     },

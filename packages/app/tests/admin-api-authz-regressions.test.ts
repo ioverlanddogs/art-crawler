@@ -38,6 +38,7 @@ const prismaMock = {
   proposedChangeSet: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
   fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
   publishBatch: { create: vi.fn(), findMany: vi.fn() },
+  canonicalRecordVersion: { create: vi.fn(), findFirst: vi.fn(), findMany: vi.fn(), findUnique: vi.fn() },
   $transaction: vi.fn()
 };
 
@@ -217,5 +218,21 @@ describe('admin api authz regressions', () => {
       })
     );
     expect(res.status).toBe(200);
+  });
+
+  test('rollback endpoint is admin-only and returns 403 for operator role', async () => {
+    const { POST } = await import('@/app/api/admin/publish/[eventId]/rollback/route');
+
+    requireRoleMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+    const res = await POST(
+      new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ versionNumber: 1, reason: 'Incorrect merge' })
+      }),
+      { params: { eventId: 'evt-1' } }
+    );
+
+    expect(res.status).toBe(403);
   });
 });

@@ -66,11 +66,41 @@ export async function POST(request: Request, { params }: { params: { eventId: st
       }
     });
 
-    await tx.event.update({
+    const publishedEvent = await tx.event.update({
       where: { id: event.id },
       data: {
         publishStatus: 'published',
         publishedAt: now
+      }
+    });
+
+    const lastVersion = await tx.canonicalRecordVersion.findFirst({
+      where: { eventId: event.id },
+      orderBy: { versionNumber: 'desc' },
+      select: { versionNumber: true }
+    });
+    const nextVersion = (lastVersion?.versionNumber ?? 0) + 1;
+
+    await tx.canonicalRecordVersion.create({
+      data: {
+        eventId: event.id,
+        versionNumber: nextVersion,
+        dataJson: {
+          title: publishedEvent.title,
+          startAt: publishedEvent.startAt,
+          endAt: publishedEvent.endAt,
+          timezone: publishedEvent.timezone,
+          location: publishedEvent.location,
+          description: publishedEvent.description,
+          sourceUrl: publishedEvent.sourceUrl,
+          publishStatus: publishedEvent.publishStatus,
+          publishedAt: publishedEvent.publishedAt
+        },
+        changeSummary: releaseSummary ?? null,
+        sourceDocumentId: latestApprovedChangeSet.sourceDocumentId,
+        proposedChangeSetId: latestApprovedChangeSet.id,
+        publishBatchId: publishBatch.id,
+        createdByUserId: session.user.id
       }
     });
 

@@ -226,6 +226,7 @@ model Event {
   updatedAt          DateTime            @updatedAt
   venue              Venue?              @relation(fields: [venueId], references: [id])
   proposedChangeSets ProposedChangeSet[]
+  versions           CanonicalRecordVersion[]
 }
 
 model SourceDocument {
@@ -339,6 +340,24 @@ model PublishBatch {
   createdAt       DateTime @default(now())
 
   @@index([createdAt(sort: Desc)])
+}
+
+model CanonicalRecordVersion {
+  id                  String   @id @default(cuid())
+  eventId             String
+  versionNumber       Int
+  dataJson            Json
+  changeSummary       String?
+  sourceDocumentId    String?
+  proposedChangeSetId String?
+  publishBatchId      String?
+  createdByUserId     String?
+  createdAt           DateTime @default(now())
+
+  event Event @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, versionNumber])
+  @@index([eventId, createdAt(sort: Desc)])
 }
 
 model IngestExtractedEvent {
