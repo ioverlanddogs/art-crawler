@@ -2,7 +2,7 @@ import { prisma } from '../lib/db.js';
 import { normaliseQueue } from '../queues.js';
 import { enqueueNextStage } from '../lib/stage-chaining.js';
 import { markSourceFailure, markSourceSuccess } from '../lib/source-health.js';
-import type { Prisma } from '../../generated/prisma/index.js';
+import type { Prisma } from '../lib/prisma-client.js';
 
 export interface AiExtractor {
   extract(text: string): Promise<Record<string, unknown>>;
