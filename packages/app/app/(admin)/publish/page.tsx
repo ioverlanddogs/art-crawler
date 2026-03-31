@@ -7,6 +7,7 @@ import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
 import { recommendAssignmentActions } from '@/lib/admin/triage-recommendations';
 import { scorePublishReadiness, simulateStagedRelease } from '@/lib/admin/publish-readiness';
+import { planAutonomousRollout } from '@/lib/admin/autonomous-rollout';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +85,21 @@ export default async function PublishQueuePage({ searchParams }: { searchParams?
     }))
   );
 
+  const rolloutPlan = planAutonomousRollout(
+    publishRows.map((row) => ({
+      id: row.event.id,
+      workspaceId: row.event.venueId ?? 'global',
+      publishRiskScore: row.readinessScore.publishRiskScore,
+      unresolvedBlockers: row.readiness.blockers.length
+    })),
+    {
+      blockerDriftRate: blocked.length / Math.max(1, publishRows.length),
+      rollbackRate: releaseSimulation.rollbackProne.length / Math.max(1, publishRows.length),
+      canaryFailureRate: releaseSimulation.highRiskButPublishable.length / Math.max(1, publishRows.length),
+      unresolvedDuplicateBlockers: blocked.length
+    }
+  );
+
   const reviewerLoads = reviewers.map((reviewer) => ({
     reviewerId: reviewer.id,
     openCount: blocked.filter((row) => row.event.assignedReviewerId === reviewer.id).length,
@@ -129,6 +145,7 @@ export default async function PublishQueuePage({ searchParams }: { searchParams?
               <li><strong>Likely rollback-prone:</strong> {releaseSimulation.rollbackProne.length}</li>
             </ul>
             <p className="kpi-note">Simulation informs triage only. Human approval and blockers still govern release.</p>
+            <p className="kpi-note">Canary cohorts: {rolloutPlan.canaryPlans.length} · rollout halt: {rolloutPlan.haltRollout ? 'yes' : 'no'}</p>
           </article>
         </div>
       </SectionCard>
