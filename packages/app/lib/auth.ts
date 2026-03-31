@@ -3,15 +3,20 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import { PrismaAdapter } from '@next-auth/prisma-adapter';
 import bcrypt from 'bcryptjs';
 import { prisma } from './db';
+import { isDatabaseRuntimeReady } from './runtime-env';
+
+const databaseReady = isDatabaseRuntimeReady();
 
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
-  session: { strategy: 'database' },
+  adapter: databaseReady ? PrismaAdapter(prisma) : undefined,
+  session: { strategy: 'jwt' },
+  pages: { signIn: '/login' },
   providers: [
     CredentialsProvider({
       name: 'Credentials',
       credentials: { email: {}, password: {} },
       async authorize(credentials) {
+        if (!databaseReady) return null;
         if (!credentials?.email || !credentials.password) return null;
 
         const user = await prisma.adminUser.findUnique({ where: { email: credentials.email } });
@@ -36,17 +41,32 @@ export const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async session({ session, user }) {
-      if (!session.user || !user?.id) return session;
+    async jwt({ token, user }) {
+      if (user) {
+        token.role = user.role;
+        token.status = user.status;
+      }
 
-      const freshUser = await prisma.adminUser.findUnique({ where: { id: user.id } });
-      if (!freshUser) return session;
+      if (!databaseReady || !token.sub) return token;
 
-      session.user.id = freshUser.id;
-      session.user.role = freshUser.role;
-      session.user.status = freshUser.status;
-      session.user.email = freshUser.email;
-      session.user.name = freshUser.name;
+      const freshUser = await prisma.adminUser.findUnique({ where: { id: token.sub } });
+      if (!freshUser) return token;
+
+      token.email = freshUser.email;
+      token.name = freshUser.name;
+      token.role = freshUser.role;
+      token.status = freshUser.status;
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (!session.user || !token?.sub) return session;
+
+      session.user.id = token.sub;
+      session.user.role = (token.role as typeof session.user.role) ?? 'viewer';
+      session.user.status = (token.status as typeof session.user.status) ?? 'PENDING';
+      session.user.email = token.email;
+      session.user.name = token.name;
       return session;
     }
   }
