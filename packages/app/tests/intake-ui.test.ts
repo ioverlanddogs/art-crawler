@@ -3,9 +3,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const requireRoleMock = vi.fn();
 
 const prismaMock = {
-  ingestionJob: { count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
-  extractionRun: { findFirst: vi.fn() },
-  proposedChangeSet: { findFirst: vi.fn() }
+  sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  ingestionJob: { create: vi.fn(), count: vi.fn(), findMany: vi.fn(), findUnique: vi.fn(), update: vi.fn() },
+  extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  proposedChangeSet: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
+  fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
+  publishBatch: { create: vi.fn(), findMany: vi.fn() }
 };
 
 vi.mock('@/lib/auth-guard', () => ({

@@ -18,10 +18,12 @@ vi.mock('@/lib/intake/match-canonical', () => ({
 
 describe('runIntake', () => {
   const prismaMock = {
-    sourceDocument: { create: vi.fn(), update: vi.fn() },
-    ingestionJob: { create: vi.fn(), update: vi.fn() },
-    extractionRun: { create: vi.fn() },
-    proposedChangeSet: { create: vi.fn() },
+    sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    ingestionJob: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
+    proposedChangeSet: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
+    publishBatch: { create: vi.fn(), findMany: vi.fn() },
     pipelineTelemetry: { create: vi.fn() }
   } as any;
 
