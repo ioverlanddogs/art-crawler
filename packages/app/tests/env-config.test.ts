@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from 'vitest';
-import { getAppBaseUrl, getImportSecretFromEnv } from '@/lib/env';
+import { getAnthropicApiKey, getAppBaseUrl, getImportSecretFromEnv, isAiExtractionEnabled } from '@/lib/env';
 
 const ORIGINAL_ENV = { ...process.env };
 
@@ -28,5 +28,15 @@ describe('app env config contract', () => {
 
     delete process.env.NEXTAUTH_URL;
     expect(getAppBaseUrl()).toBe('http://localhost:3000');
+  });
+
+  test('exposes ANTHROPIC_API_KEY helpers for extraction toggle', () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    expect(getAnthropicApiKey()).toBeUndefined();
+    expect(isAiExtractionEnabled()).toBe(false);
+
+    process.env.ANTHROPIC_API_KEY = 'test-key';
+    expect(getAnthropicApiKey()).toBe('test-key');
+    expect(isAiExtractionEnabled()).toBe(true);
   });
 });
