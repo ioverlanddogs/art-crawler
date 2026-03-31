@@ -1,4 +1,10 @@
 /**
+ * TODO: wire into source prioritisation in scheduler.ts.
+ * Intended use: maintain per-source Beta(alpha, beta) priors where
+ * alpha = successful fetches and beta = failed fetches, then call
+ * thompsonSample to rank sources before each discovery run.
+ * Currently unused.
+ *
  * Draw a random sample from Beta(alpha, beta) using the Johnk method.
  * This rejection sampler is suitable for alpha, beta >= 1.
  */

@@ -53,7 +53,7 @@ describe('pipeline import route contract', () => {
   });
 
   test('returns canonical response body on happy path', async () => {
-    processImportBatchMock.mockResolvedValue({ imported: 1, skipped: 0, errors: [], importBatchId: 'batch_1' });
+    processImportBatchMock.mockResolvedValue({ imported: 1, skipped: 0, errors: [], importBatchId: 'batch_1', disabled: false });
     const { POST } = await import('@/app/api/pipeline/import/route');
 
     const response = await POST(
@@ -79,6 +79,6 @@ describe('pipeline import route contract', () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ imported: 1, skipped: 0, errors: [], importBatchId: 'batch_1' });
+    await expect(response.json()).resolves.toEqual({ imported: 1, skipped: 0, errors: [], importBatchId: 'batch_1', disabled: false });
   });
 });

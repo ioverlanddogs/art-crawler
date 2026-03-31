@@ -5,7 +5,8 @@ const responseSchema = z.object({
   imported: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
   errors: z.array(z.unknown()),
-  importBatchId: z.string().nullable()
+  importBatchId: z.string().nullable(),
+  disabled: z.boolean()
 });
 
 function asRecord(value: unknown): Record<string, unknown> {

@@ -44,7 +44,13 @@ describe('stage chaining idempotency and progression', () => {
   test('uses deterministic downstream job ids to suppress retry fan-out', async () => {
     const queue = { add: vi.fn() };
     await enqueueNextStage(queue, 'extract', 'cand-42');
-    expect(queue.add).toHaveBeenCalledWith('extract', { candidateId: 'cand-42' }, { jobId: 'extract:cand-42' });
+    expect(queue.add).toHaveBeenCalledWith('extract', { candidateId: 'cand-42' }, {
+      jobId: 'extract:cand-42',
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 200 }
+    });
     expect(nextStageJobId('extract', 'cand-42')).toBe('extract:cand-42');
   });
 
@@ -68,6 +74,12 @@ describe('stage chaining idempotency and progression', () => {
     const { runFetch } = await import('../../src/workers/fetch.js');
     await runFetch('cand-1');
 
-    expect(queueAdd).toHaveBeenCalledWith('extract', { candidateId: 'cand-1' }, { jobId: 'extract:cand-1' });
+    expect(queueAdd).toHaveBeenCalledWith('extract', { candidateId: 'cand-1' }, {
+      jobId: 'extract:cand-1',
+      attempts: 3,
+      backoff: { type: 'exponential', delay: 5000 },
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 200 }
+    });
   });
 });

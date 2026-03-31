@@ -13,7 +13,7 @@ export async function runDiscovery(enqueueNext = true) {
   });
 
   const recentThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  let lastCandidate = null;
+  const createdCandidates: Array<{ id: string }> = [];
 
   for (const source of activeSources) {
     if (!isSourceHealthy(source)) {
@@ -93,11 +93,11 @@ export async function runDiscovery(enqueueNext = true) {
     if (enqueueNext) {
       await enqueueNextStage(fetchQueue, 'fetch', candidate.id);
     }
-    lastCandidate = candidate;
+    createdCandidates.push(candidate);
   }
 
-  if (!lastCandidate) {
+  if (createdCandidates.length === 0) {
     throw new Error('No eligible trusted sources found for discovery');
   }
-  return lastCandidate;
+  return createdCandidates;
 }
