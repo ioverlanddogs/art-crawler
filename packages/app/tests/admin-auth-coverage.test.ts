@@ -7,7 +7,13 @@ const prismaMock = {
   pipelineConfigVersion: { findMany: vi.fn() },
   modelVersion: { findMany: vi.fn(), findUnique: vi.fn() },
   ingestExtractedEvent: { findMany: vi.fn(), count: vi.fn() },
-  pipelineTelemetry: { count: vi.fn() }
+  pipelineTelemetry: { count: vi.fn() },
+  sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  ingestionJob: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
+  proposedChangeSet: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
+  publishBatch: { create: vi.fn(), findMany: vi.fn() }
 };
 
 const redirectMock = vi.fn();

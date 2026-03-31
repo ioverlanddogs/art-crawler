@@ -32,6 +32,12 @@ const prismaMock = {
   siteSetting: {
     upsert: vi.fn()
   },
+  sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  ingestionJob: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
+  proposedChangeSet: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+  fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
+  publishBatch: { create: vi.fn(), findMany: vi.fn() },
   $transaction: vi.fn()
 };
 
