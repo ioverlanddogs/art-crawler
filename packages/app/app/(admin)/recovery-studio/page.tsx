@@ -12,6 +12,14 @@ type RecoveryParams = {
   dryRun?: string;
 };
 
+function toStatusBadge(status: string | null) {
+  if (status === 'failure') return { tone: 'danger' as const, label: 'Failure' };
+  if (status === 'success') return { tone: 'success' as const, label: 'Success' };
+  if (status === 'dry_run') return { tone: 'info' as const, label: 'Dry run' };
+  if (status === 'accepted') return { tone: 'warning' as const, label: 'Accepted' };
+  return { tone: 'neutral' as const, label: status ?? 'Unknown' };
+}
+
 export default async function RecoveryStudioPage({ searchParams }: { searchParams?: RecoveryParams }) {
   const q = searchParams?.q?.trim();
   const target = searchParams?.target?.trim() || 'ingestion_job';
@@ -139,12 +147,15 @@ export default async function RecoveryStudioPage({ searchParams }: { searchParam
               Parser/model before: legacy-parser-v1 / model-v2 · Replay target parser/model: {parserVersion} / {modelVersion}
             </p>
             <div className="stack" style={{ marginTop: 12 }}>
-              {chain.map((row) => (
-                <div key={row.id} className="filters-row" style={{ justifyContent: 'space-between' }}>
-                  <span>{row.stage}</span>
-                  <StatusBadge status={row.status === 'failure' ? 'error' : row.status === 'success' ? 'success' : 'pending'} />
-                </div>
-              ))}
+              {chain.map((row) => {
+                const badge = toStatusBadge(row.status);
+                return (
+                  <div key={row.id} className="filters-row" style={{ justifyContent: 'space-between' }}>
+                    <span>{row.stage}</span>
+                    <StatusBadge tone={badge.tone}>{badge.label}</StatusBadge>
+                  </div>
+                );
+              })}
             </div>
           </>
         ) : (

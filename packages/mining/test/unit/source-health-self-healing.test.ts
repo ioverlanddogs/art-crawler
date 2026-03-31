@@ -70,4 +70,15 @@ describe('source health self-healing actions', () => {
     const calls = prismaMock.pipelineTelemetry.create.mock.calls.map((call) => JSON.parse(call[0].data.detail));
     expect(calls.some((detail) => detail.event === 'false_quarantine_reversed' && detail.reversalReason === 'manual_override:ops-user')).toBe(true);
   });
+
+  test('does not release quarantine prematurely when reliability remains unstable', async () => {
+    prismaMock.trustedSource.findUniqueOrThrow.mockResolvedValue({ id: 'source-4', failureCount: 4 });
+    const { attemptSourceRecoveryRelease } = await import('../../src/lib/source-health.js');
+    const released = await attemptSourceRecoveryRelease('source-4');
+
+    expect(released).toBe(false);
+    const calls = prismaMock.pipelineTelemetry.create.mock.calls.map((call) => JSON.parse(call[0].data.detail));
+    expect(calls.some((detail) => detail.event === 'source_release_blocked')).toBe(true);
+    expect(calls.some((detail) => detail.event === 'source_released')).toBe(false);
+  });
 });
