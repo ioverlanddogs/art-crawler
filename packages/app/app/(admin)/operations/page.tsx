@@ -4,6 +4,8 @@ import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 import { recommendAssignmentActions } from '@/lib/admin/triage-recommendations';
 import { calibrateRecommendationConfidence, summarizeModelFeedback } from '@/lib/admin/model-feedback';
 import { evaluateGovernancePolicies } from '@/lib/admin/governance-policy';
+import { orchestrateQueue } from '@/lib/admin/queue-orchestrator';
+import { optimizeWorkload } from '@/lib/admin/workload-optimizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,6 +70,39 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
     duplicatePrecision: feedback.duplicateRecommendationPrecision
   });
 
+  const queueRouting = orchestrateQueue(
+    scopedOpenWork.map((row) => ({
+      id: `pcs-${row.assignedReviewerId ?? 'unassigned'}`,
+      queueType: 'review' as const,
+      scopeKey: scopeContext.scope,
+      reviewerId: row.assignedReviewerId ?? null,
+      ageHours: avgResolutionMinutes / 60,
+      slaTargetHours: 24,
+      escalationLevel: 0,
+      unresolvedBlockers: 0,
+      duplicateRisk: 0.1,
+      corroborationRisk: 0.1
+    }))
+  );
+
+  const workloadRouting = optimizeWorkload(
+    scopedDuplicateOwnership.map((row) => ({
+      id: `dup-${row.assignedReviewerId ?? 'unassigned'}`,
+      queueType: 'duplicate' as const,
+      sourceRisk: Math.min(1, row._count._all / 20),
+      hotspotScore: Math.min(1, row._count._all / 10),
+      workspaceId: scopeContext.scope
+    })),
+    reviewerLoads.map((load) => ({
+      reviewerId: load.reviewerId,
+      expertise: ['duplicate', 'review'],
+      openItems: load.openCount,
+      overdueItems: load.overdueCount,
+      escalationItems: load.escalationCount,
+      loadCeiling: 24
+    }))
+  );
+
   const policies = evaluateGovernancePolicies({
     scope: scopeContext,
     unresolvedPublishBlockers: scopedBlockers.reduce((acc, row) => acc + row._count.assignedReviewerId, 0),
@@ -87,6 +122,7 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
         <StatCard label="Overdue items" value={scopedOverdue.reduce((acc, row) => acc + row._count._all, 0)} />
         <StatCard label="Escalation hotspots" value={scopedEscalations.reduce((acc, row) => acc + row._count._all, 0)} />
         <StatCard label="Avg resolution time" value={`${avgResolutionMinutes}m`} />
+        <StatCard label="Priority lanes" value={queueRouting.filter((row) => row.dispatchLane !== 'defer').length} />
       </div>
 
       <div className="two-col">
@@ -123,6 +159,14 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
               </li>
             ))}
             {policies.firedPolicies.length === 0 ? <li className="muted">No policy triggers in current scope.</li> : null}
+          </ul>
+        </SectionCard>
+
+        <SectionCard title="Workload routing" subtitle="Deterministic balancing and hotspot routing remain advisory only.">
+          <ul className="timeline">
+            <li><strong>Priority-routed queue items:</strong> {queueRouting.length}</li>
+            <li><strong>Hotspot routes requiring specialist review:</strong> {workloadRouting.filter((row) => row.route === 'hotspot').length}</li>
+            <li><strong>Escalation routes:</strong> {workloadRouting.filter((row) => row.route === 'escalate').length}</li>
           </ul>
         </SectionCard>
 
