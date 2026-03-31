@@ -470,37 +470,39 @@ export function ConfigClient({
           />
         </SectionCard>
 
-        <SectionCard title="Model versions" subtitle="Manual promotion controls with offline metric context.">
-          <DataTable
-            rows={models}
-            rowKey={(row) => row.id}
-            emptyState={<EmptyState title="No model versions" description="Register model versions to manage live and shadow lifecycle." />}
-            columns={[
-              { key: 'name', header: 'Model', render: (row) => `${row.name} (${row.entityType || 'pipeline'})` },
-              { key: 'version', header: 'Version', render: (row) => `v${row.version}` },
-              { key: 'state', header: 'State', render: (row) => <GovernanceStateBadge state={deriveModelState(row)} /> },
-              {
-                key: 'metrics',
-                header: 'Offline metrics snapshot',
-                render: (row) => (row.shadowMetrics ? 'Available' : 'Unavailable')
-              },
-              {
-                key: 'action',
-                header: 'Global action',
-                render: (row) => (
-                  <ActionButton
-                    variant="secondary"
-                    submitting={submittingId === row.id && submittingAction === 'promote'}
-                    disabled={deriveModelState(row) === 'active' || submittingAction !== null}
-                    onClick={() => setConfirmState({ mode: 'promote', id: row.id, version: row.version, modelName: row.name })}
-                  >
-                    {deriveModelState(row) === 'active' ? 'Live now' : 'Promote to live'}
-                  </ActionButton>
-                )
-              }
-            ]}
-          />
-        </SectionCard>
+        <section id="model-versions" aria-label="Model versions">
+          <SectionCard title="Model versions" subtitle="Manual promotion controls with offline metric context.">
+            <DataTable
+              rows={models}
+              rowKey={(row) => row.id}
+              emptyState={<EmptyState title="No model versions" description="Register model versions to manage live and shadow lifecycle." />}
+              columns={[
+                { key: 'name', header: 'Model', render: (row) => `${row.name} (${row.entityType || 'pipeline'})` },
+                { key: 'version', header: 'Version', render: (row) => `v${row.version}` },
+                { key: 'state', header: 'State', render: (row) => <GovernanceStateBadge state={deriveModelState(row)} /> },
+                {
+                  key: 'metrics',
+                  header: 'Offline metrics snapshot',
+                  render: (row) => (row.shadowMetrics ? 'Available' : 'Unavailable')
+                },
+                {
+                  key: 'action',
+                  header: 'Global action',
+                  render: (row) => (
+                    <ActionButton
+                      variant="secondary"
+                      submitting={submittingId === row.id && submittingAction === 'promote'}
+                      disabled={deriveModelState(row) === 'active' || submittingAction !== null}
+                      onClick={() => setConfirmState({ mode: 'promote', id: row.id, version: row.version, modelName: row.name })}
+                    >
+                      {deriveModelState(row) === 'active' ? 'Live now' : 'Promote to live'}
+                    </ActionButton>
+                  )
+                }
+              ]}
+            />
+          </SectionCard>
+        </section>
       </div>
 
       <SectionCard

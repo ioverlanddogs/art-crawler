@@ -44,6 +44,16 @@ function readFilterState(searchParams: { get: (key: string) => string | null }) 
   };
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  const element = target instanceof HTMLElement ? target : null;
+  if (!element) return false;
+  if (element.isContentEditable) return true;
+  if (element.closest('[contenteditable="true"]')) return true;
+
+  const tagName = element.tagName;
+  return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+}
+
 export function ModerationClient({
   initialItems,
   failureCount
@@ -228,10 +238,10 @@ export function ModerationClient({
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
-      const tagName = (event.target as HTMLElement | null)?.tagName ?? '';
-      const inTypingField = tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
+      const inTypingField = isEditableTarget(event.target);
 
       if (event.key === '/') {
+        if (inTypingField) return;
         event.preventDefault();
         searchInputRef.current?.focus();
         return;
