@@ -10,6 +10,7 @@
     "lint": "eslint 'app/**/*.ts' 'lib/**/*.ts' 'components/**/*.ts' --max-warnings 50",
     "pretypecheck": "npm run prisma:generate",
     "typecheck": "tsc --noEmit",
+    "pretest": "npm run prisma:generate",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
     "prisma:push": "DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required for @artio/app prisma:push} DATABASE_URL_DIRECT=${DATABASE_URL_DIRECT:-$DATABASE_URL} prisma db push"
