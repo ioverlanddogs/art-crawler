@@ -2,7 +2,7 @@ import { prisma } from '@/lib/db';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, ok } from '@/lib/api/response';
 import { parsePagination } from '@/lib/api/pagination';
-import { ConfidenceBand, IngestExtractedStatus, type Prisma } from '@/generated/prisma';
+import { ConfidenceBand, IngestExtractedStatus, type Prisma } from '@/lib/prisma-client';
 
 export async function GET(req: Request) {
   try {
