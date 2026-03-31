@@ -56,4 +56,25 @@ describe('replay route', () => {
     const payload = await res.json();
     expect(payload.canonicalWriteAllowed).toBe(false);
   });
+
+  test('POST blocks non-dry-run replay when operator confirmation is missing', async () => {
+    requireRoleMock.mockResolvedValueOnce({ user: { id: 'op-2', email: 'op2@example.test', role: 'operator', status: 'ACTIVE' } });
+    const { POST } = await import('@/app/api/admin/recovery/replay/route');
+    const res = await POST(
+      new Request('http://localhost/api/admin/recovery/replay', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          action: 'replay_publish_readiness_checks',
+          targetType: 'publish_blocker_cluster',
+          targetId: 'cluster-1',
+          reason: 'verify blocker preservation before replay execution',
+          dryRun: false
+        })
+      })
+    );
+
+    expect(res.status).toBe(400);
+    expect(prismaMock.pipelineTelemetry.create).not.toHaveBeenCalled();
+  });
 });
