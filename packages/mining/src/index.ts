@@ -33,8 +33,8 @@ function registerWorkers() {
     async (_job) => {
       try {
         const { runDiscovery } = await import('./workers/discovery.js');
-        const c = await runDiscovery();
-        console.log(`[mining:discovery] created candidate ${c.id}`);
+        const candidates = await runDiscovery();
+        console.log(`[mining:discovery] created ${candidates.length} candidate(s)`);
       } catch (error: unknown) {
         console.error('[mining:discovery] error:', getErrorMessage(error));
         throw error;
@@ -175,16 +175,22 @@ export async function runVerticalSlice() {
   const { runMature } = await import('./workers/mature.js');
   const { runExport } = await import('./workers/export.js');
 
-  const candidate = await runDiscovery(false);
-  await runFetch(candidate.id, false);
-  await runExtract(candidate.id, undefined, false);
-  await runNormalise(candidate.id, false);
-  await runScore(candidate.id, false);
-  await runDeduplicate(candidate.id, false);
-  await runEnrich(candidate.id, false);
-  await runMature(candidate.id, false);
-  await runExport(candidate.id);
-  return candidate.id;
+  const candidates = await runDiscovery(false);
+  let lastCandidateId = '';
+
+  for (const candidate of candidates) {
+    await runFetch(candidate.id, false);
+    await runExtract(candidate.id, undefined, false);
+    await runNormalise(candidate.id, false);
+    await runScore(candidate.id, false);
+    await runDeduplicate(candidate.id, false);
+    await runEnrich(candidate.id, false);
+    await runMature(candidate.id, false);
+    await runExport(candidate.id);
+    lastCandidateId = candidate.id;
+  }
+
+  return lastCandidateId;
 }
 
 function startHealthServer() {

@@ -73,7 +73,8 @@ describe('post-hotfix regressions (app)', () => {
 
   test('shadow-mode imports are suppressed while mining_import_enabled=false', async () => {
     const db = {
-      events: [] as any[]
+      events: [] as any[],
+      batches: [] as any[]
     };
 
     const prisma = {
@@ -83,7 +84,8 @@ describe('post-hotfix regressions (app)', () => {
         }
       },
       importBatch: {
-        async create() {
+        async create({ data }: any) {
+          db.batches.push(data);
           return { id: 'batch-1' };
         },
         async update() {
@@ -122,7 +124,10 @@ describe('post-hotfix regressions (app)', () => {
     });
 
     expect(result.imported).toBe(0);
-    expect(result.skipped).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(result.disabled).toBe(true);
+    expect(result.importBatchId).toBeNull();
+    expect(db.batches).toHaveLength(0);
     expect(db.events).toHaveLength(0);
   });
 

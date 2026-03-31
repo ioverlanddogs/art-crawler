@@ -25,6 +25,14 @@ export const importSchema = z.object({
   events: z.array(eventSchema).min(1).max(50)
 });
 
+export type ImportBatchResult = {
+  imported: number;
+  skipped: number;
+  errors: Array<{ index?: number; path?: string; message: string }>;
+  importBatchId: string | null;
+  disabled: boolean;
+};
+
 export function computeFingerprint(venueUrl: string, title: string, startAt: string): string {
   const normalized = `${venueUrl}|${title.toLowerCase().trim()}|${startAt}`;
   return crypto.createHash('sha256').update(normalized).digest('hex');
@@ -36,21 +44,24 @@ export function confidenceBandFromScore(score: number): 'HIGH' | 'MEDIUM' | 'LOW
   return 'LOW';
 }
 
-export async function processImportBatch(prisma: PrismaClient, payload: unknown) {
+export async function processImportBatch(prisma: PrismaClient, payload: unknown): Promise<ImportBatchResult> {
   const parsed = importSchema.safeParse(payload);
   if (!parsed.success) {
     return {
       imported: 0,
       skipped: 0,
       errors: parsed.error.issues.map((issue) => ({ path: issue.path.join('.'), message: issue.message })),
-      importBatchId: null
+      importBatchId: null,
+      disabled: false
     };
   }
 
   const { source, region, events } = parsed.data;
 
   const siteSetting = await prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } });
-  const visibleInModeration = siteSetting?.value === 'true';
+  if (siteSetting?.value !== 'true') {
+    return { imported: 0, skipped: 0, errors: [], importBatchId: null, disabled: true };
+  }
 
   const batch = await prisma.importBatch.create({
     data: {
@@ -97,11 +108,6 @@ export async function processImportBatch(prisma: PrismaClient, payload: unknown)
         }
       });
 
-      if (!visibleInModeration) {
-        skipped += 1;
-        continue;
-      }
-
       const score = Math.round(event.miningConfidenceScore);
       await prisma.ingestExtractedEvent.create({
         data: {
@@ -143,5 +149,5 @@ export async function processImportBatch(prisma: PrismaClient, payload: unknown)
     }
   });
 
-  return { imported, skipped, errors, importBatchId: batch.id };
+  return { imported, skipped, errors, importBatchId: batch.id, disabled: false };
 }

@@ -71,9 +71,9 @@ describe('trusted source discovery/fetch hardening', () => {
     prismaMock.miningCandidate.create.mockResolvedValue({ id: 'cand-1' });
 
     const { runDiscovery } = await import('../../src/workers/discovery.js');
-    const candidate = await runDiscovery(false);
+    const candidates = await runDiscovery(false);
 
-    expect(candidate.id).toBe('cand-1');
+    expect(candidates).toEqual([{ id: 'cand-1' }]);
     expect(prismaMock.miningCandidate.create).toHaveBeenCalledTimes(1);
     expect(prismaMock.miningCandidate.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -209,6 +209,48 @@ describe('trusted source discovery/fetch hardening', () => {
           fetchContentType: 'text/html',
           status: 'FETCHED',
           lastError: null
+        })
+      })
+    );
+  });
+
+  test('fails fetch when response payload is larger than 5MB', async () => {
+    prismaMock.miningCandidate.findUniqueOrThrow.mockResolvedValue({
+      id: 'cand-large',
+      sourceId: 'source-active',
+      sourceUrl: 'https://example.test/events/large',
+      configVersion: 9,
+      source: activeSource
+    });
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        status: 200,
+        ok: true,
+        headers: { get: vi.fn().mockReturnValue('text/html') },
+        text: vi.fn().mockResolvedValue('x'.repeat(5_000_001))
+      })
+    );
+
+    const { runFetch } = await import('../../src/workers/fetch.js');
+    await expect(runFetch('cand-large', false)).rejects.toThrow('Response too large');
+
+    expect(markSourceFailureMock).toHaveBeenCalledWith('source-active', 'response_too_large');
+    expect(prismaMock.miningCandidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          lastError: 'response_too_large',
+          retryCount: { increment: 1 }
+        })
+      })
+    );
+    expect(prismaMock.pipelineTelemetry.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          stage: 'fetch',
+          status: 'failure',
+          detail: 'response_too_large'
         })
       })
     );

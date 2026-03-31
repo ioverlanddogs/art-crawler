@@ -101,6 +101,25 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
   }
 
   const payload = await response.text();
+  if (payload.length > 5_000_000) {
+    await markSourceFailure(candidate.sourceId, 'response_too_large');
+    await persistFetchFailure(candidateId, {
+      canonicalUrl: resolvedUrl,
+      fetchStatusCode: response.status,
+      fetchContentType: response.headers.get('content-type'),
+      lastError: 'response_too_large'
+    });
+    await prisma.pipelineTelemetry.create({
+      data: {
+        stage: 'fetch',
+        status: 'failure',
+        detail: 'response_too_large',
+        candidateId,
+        configVersion: candidate.configVersion
+      }
+    });
+    throw new Error('Response too large');
+  }
   const contentType = response.headers.get('content-type');
   const rawHash = createHash('sha256').update(payload).digest('hex');
 

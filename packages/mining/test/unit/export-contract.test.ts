@@ -60,7 +60,7 @@ describe('mining -> app import contract', () => {
       ok: true,
       status: 200,
       async json() {
-        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_123' };
+        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_123', disabled: false };
       }
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -87,7 +87,7 @@ describe('mining -> app import contract', () => {
       ok: true,
       status: 200,
       async json() {
-        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_legacy' };
+        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_legacy', disabled: false };
       }
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -118,7 +118,7 @@ describe('mining -> app import contract', () => {
       ok: true,
       status: 200,
       async json() {
-        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_123' };
+        return { imported: 1, skipped: 0, errors: [], importBatchId: 'batch_123', disabled: false };
       }
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -134,7 +134,7 @@ describe('mining -> app import contract', () => {
         })
       })
     );
-    expect(result).toEqual({ imported: 1, skipped: 0, errors: [], importBatchId: 'batch_123' });
+    expect(result).toEqual({ imported: 1, skipped: 0, errors: [], importBatchId: 'batch_123', disabled: false });
   });
 
   test('sendImportBatch rejects malformed response payloads', async () => {

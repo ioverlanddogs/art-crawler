@@ -63,7 +63,10 @@ describe('mining export -> app import moderation visibility gate', () => {
     const result = await processImportBatch(prisma, payload);
 
     expect(result.imported).toBe(0);
-    expect(result.skipped).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(result.disabled).toBe(true);
+    expect(result.importBatchId).toBeNull();
+    expect(prisma.db.batches).toHaveLength(0);
     expect(prisma.db.events).toHaveLength(0);
   });
 
@@ -73,6 +76,7 @@ describe('mining export -> app import moderation visibility gate', () => {
 
     expect(result.imported).toBe(1);
     expect(result.skipped).toBe(0);
+    expect(result.disabled).toBe(false);
     expect(prisma.db.events).toHaveLength(1);
     expect(prisma.db.events[0].title).toBe('Demo Candidate');
   });
