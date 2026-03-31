@@ -1,6 +1,7 @@
 import { DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
 import { aggregateConfidenceDrift, aggregatePipelineFailures } from '@/lib/admin/data-health';
 import { prisma } from '@/lib/db';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,9 @@ export default async function DataPage({ searchParams }: { searchParams?: Record
   return (
     <div className="stack">
       <PageHeader title="Data Health Drilldown" description="Detailed quality analytics across completeness, confidence, duplicates, corroboration, and publish blockers." />
+      <p className="muted">
+        Need containment for degraded sources? Open <Link href="/self-healing">Self-healing</Link> to review quarantines, fallback activity, and release evidence.
+      </p>
       <div className="stats-grid">
         <StatCard label="Sources" value={platformCounts.length} />
         <StatCard label="Low-confidence required fields" value={lowConfidence} detail={`Window: last ${days} day(s)`} />

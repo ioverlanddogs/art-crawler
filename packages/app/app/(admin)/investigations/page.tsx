@@ -9,6 +9,7 @@ import {
   SectionCard
 } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -116,6 +117,9 @@ export default async function InvestigationsPage({ searchParams }: { searchParam
 
       <SectionCard title="Search and filters" subtitle="Deep-linkable query params drive this page and are preserved by browser back/forward.">
         <InvestigationSearch filters={filters} />
+        <p className="kpi-note">
+          For source-level quarantine and fallback controls, use the <Link href="/self-healing">Self-healing console</Link>.
+        </p>
       </SectionCard>
 
       {!hasFilters ? (

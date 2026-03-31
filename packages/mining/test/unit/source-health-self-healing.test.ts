@@ -19,7 +19,7 @@ describe('source health self-healing actions', () => {
     prismaMock.pipelineTelemetry.create.mockResolvedValue({});
   });
 
-  test('auto quarantines on threshold breach', async () => {
+  test('auto quarantines on threshold breach and emits mapped telemetry events', async () => {
     const { markSourceFailure } = await import('../../src/lib/source-health.js');
     await markSourceFailure('source-1', 'extraction_missing_title_or_name');
 
@@ -30,10 +30,15 @@ describe('source health self-healing actions', () => {
         })
       })
     );
-    expect(prismaMock.pipelineTelemetry.create).toHaveBeenCalled();
+
+    const calls = prismaMock.pipelineTelemetry.create.mock.calls.map((call) => JSON.parse(call[0].data.detail));
+    expect(calls.some((detail) => detail.event === 'fallback_chain_applied')).toBe(true);
+    expect(calls.some((detail) => detail.event === 'source_quarantined')).toBe(true);
+    expect(calls.some((detail) => detail.event === 'source_paused')).toBe(true);
+    expect(calls.some((detail) => detail.event === 'source_deprioritized')).toBe(true);
   });
 
-  test('releases recovered source from quarantine', async () => {
+  test('releases recovered source from quarantine with release evidence event', async () => {
     prismaMock.trustedSource.findUniqueOrThrow.mockResolvedValue({ id: 'source-2', failureCount: 1 });
     const { attemptSourceRecoveryRelease } = await import('../../src/lib/source-health.js');
     const released = await attemptSourceRecoveryRelease('source-2');
@@ -44,9 +49,12 @@ describe('source health self-healing actions', () => {
         data: expect.objectContaining({ status: 'ACTIVE' })
       })
     );
+
+    const calls = prismaMock.pipelineTelemetry.create.mock.calls.map((call) => JSON.parse(call[0].data.detail));
+    expect(calls.some((detail) => detail.event === 'source_released')).toBe(true);
   });
 
-  test('supports false quarantine reversal', async () => {
+  test('supports false quarantine reversal with attributable audit detail', async () => {
     const { reverseFalseQuarantine } = await import('../../src/lib/source-health.js');
     await reverseFalseQuarantine('source-3', 'ops-user');
 
@@ -54,10 +62,12 @@ describe('source health self-healing actions', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'ACTIVE',
-          notes: 'false_quarantine_reversal:ops-user',
           failureCount: 0
         })
       })
     );
+
+    const calls = prismaMock.pipelineTelemetry.create.mock.calls.map((call) => JSON.parse(call[0].data.detail));
+    expect(calls.some((detail) => detail.event === 'false_quarantine_reversed' && detail.reversalReason === 'manual_override:ops-user')).toBe(true);
   });
 });
