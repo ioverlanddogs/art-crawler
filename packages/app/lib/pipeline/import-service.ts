@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { z } from 'zod';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../generated/prisma';
 
 const eventSchema = z.object({
   venueUrl: z.string().url(),

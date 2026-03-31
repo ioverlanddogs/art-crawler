@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/db';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../../../../../../../generated/prisma';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, err, ok } from '@/lib/api/response';
 
