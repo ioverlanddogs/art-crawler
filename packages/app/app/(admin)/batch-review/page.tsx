@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
+import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 
@@ -9,7 +10,8 @@ const FILTERS = ['duplicate-blocked', 'publish-blocked', 'low-confidence', 'stal
 
 export default async function BatchReviewPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
   const activeFilter = asString(searchParams?.filter);
-  const rows = await prisma.proposedChangeSet.findMany({
+  const [rows, reviewers] = await Promise.all([
+    prisma.proposedChangeSet.findMany({
     include: {
       sourceDocument: { select: { sourceUrl: true } },
       duplicateCandidates: { select: { resolutionStatus: true, unresolvedBlockerCount: true } },
@@ -17,7 +19,9 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
     },
     orderBy: { createdAt: 'desc' },
     take: 300
-  });
+    }),
+    prisma.adminUser.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true, email: true }, orderBy: { email: 'asc' }, take: 100 })
+  ]);
 
   const filtered = rows.filter((row) => {
     const unresolvedDupes = row.duplicateCandidates.some((candidate) => candidate.resolutionStatus === 'unresolved' || candidate.unresolvedBlockerCount > 0);
@@ -59,6 +63,7 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
                   <th>Change set</th>
                   <th>Source URL</th>
                   <th>Created</th>
+                  <th>Owner</th>
                   <th>Bulk actions</th>
                 </tr>
               </thead>
@@ -68,6 +73,7 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
                     <td><code>{row.id}</code></td>
                     <td>{row.sourceDocument.sourceUrl}</td>
                     <td>{row.createdAt.toLocaleString()}</td>
+                    <td>{row.assignedReviewerId ?? 'unassigned'} · {row.slaState}</td>
                     <td>
                       <div className="filters-row">
                         <Link className="action-button variant-secondary" href={`/workbench/${row.id}`}>Assign</Link>
@@ -75,6 +81,7 @@ export default async function BatchReviewPage({ searchParams }: { searchParams?:
                         <Link className="action-button variant-secondary" href="/duplicates">Send to duplicates</Link>
                         <Link className="action-button variant-secondary" href={`/workbench/${row.id}`}>Request reparse</Link>
                         <Link className="action-button variant-primary" href={`/workbench/${row.id}`}>Mark escalate</Link>
+                        <AssignmentControls endpoint={`/api/admin/workbench/${row.id}/assignment`} reviewers={reviewers} currentAssigneeId={row.assignedReviewerId} />
                       </div>
                     </td>
                   </tr>

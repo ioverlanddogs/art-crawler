@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
+import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
@@ -7,7 +8,7 @@ import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 export const dynamic = 'force-dynamic';
 
 export default async function PublishQueuePage() {
-  const [events, recentBatches] = await Promise.all([
+  const [events, recentBatches, reviewers] = await Promise.all([
     prisma.event.findMany({
       where: { publishStatus: { in: ['ready', 'draft'] } },
       include: {
@@ -24,7 +25,8 @@ export default async function PublishQueuePage() {
     prisma.publishBatch.findMany({
       orderBy: { publishedAt: 'desc' },
       take: 10
-    })
+    }),
+    prisma.adminUser.findMany({ where: { status: 'ACTIVE' }, select: { id: true, name: true, email: true }, orderBy: { email: 'asc' }, take: 100 })
   ]);
 
   const readyEvents = events.filter((row) => row.publishStatus === 'ready');
@@ -120,6 +122,27 @@ export default async function PublishQueuePage() {
               </tbody>
             </table>
           </div>
+        )}
+      </SectionCard>
+
+      <SectionCard title="Publish blockers ownership" subtitle="Escalate and assign blockers before release windows slip.">
+        {blocked.length === 0 ? (
+          <p className="muted">No publish blockers currently.</p>
+        ) : (
+          <table className="data-table">
+            <thead><tr><th>Event</th><th>Primary blocker</th><th>Owner</th><th>Aging</th><th>Actions</th></tr></thead>
+            <tbody>
+              {blocked.slice(0, 120).map((row) => (
+                <tr key={row.event.id}>
+                  <td>{row.event.title}</td>
+                  <td>{row.readiness.blockers[0] ?? 'unknown blocker'}</td>
+                  <td>{row.event.assignedReviewerId ?? 'unassigned'} · {row.event.slaState}</td>
+                  <td>{Math.max(0, Math.round((Date.now() - row.event.updatedAt.getTime()) / 3600000))}h</td>
+                  <td><AssignmentControls endpoint={`/api/admin/publish/blockers/${row.event.id}/assignment`} reviewers={reviewers} currentAssigneeId={row.event.assignedReviewerId} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </SectionCard>
 

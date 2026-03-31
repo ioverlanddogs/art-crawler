@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ConfirmDialog, SectionCard } from '@/components/admin';
+import { AssignmentControls } from '@/components/admin/AssignmentControls';
 
 type FieldDecision = 'accepted' | 'edited' | 'rejected' | 'uncertain' | null;
 type DiffFieldState = 'added' | 'updated' | 'unchanged' | 'conflicting' | 'rejected';
@@ -56,6 +57,12 @@ interface WorkbenchData {
   };
   latestIngestionJobId: string | null;
   currentUserRole: 'viewer' | 'moderator' | 'operator' | 'admin';
+  assignedReviewerId?: string | null;
+  assignedAt?: string | Date | null;
+  escalationLevel?: number;
+  dueAt?: string | Date | null;
+  slaState?: 'unassigned' | 'assigned' | 'in_progress' | 'overdue' | 'escalated';
+  reviewers: Array<{ id: string; name: string | null; email: string }>
 }
 
 interface CanonicalVersion {
@@ -249,6 +256,10 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
 
   return (
     <div className="stack">
+      <SectionCard title="Assignment + SLA" subtitle="Explicit ownership controls for this workbench item.">
+        <p className="kpi-note">Current owner: {data.assignedReviewerId ?? 'unassigned'} · SLA: {data.slaState ?? 'unassigned'} · Escalation: L{data.escalationLevel ?? 0}</p>
+        <AssignmentControls endpoint={`/api/admin/workbench/${data.id}/assignment`} reviewers={data.reviewers} currentAssigneeId={data.assignedReviewerId ?? null} />
+      </SectionCard>
       <div className="workbench-grid">
         <SourceEvidencePanel
           sourceDocument={data.sourceDocument}
