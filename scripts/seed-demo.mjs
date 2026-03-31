@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { execSync } from 'node:child_process';
 import bcrypt from 'bcryptjs';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../packages/app/generated/prisma/index.js';
 
 function run(cmd) {
   execSync(cmd, { stdio: 'inherit' });
