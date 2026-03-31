@@ -1,27 +1,25 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import { groupByKey } from '@/lib/admin/batch-workflows';
+import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 
 export const dynamic = 'force-dynamic';
 
 export default async function PublishQueuePage() {
-  const [readyEvents, recentBatches] = await Promise.all([
+  const [events, recentBatches] = await Promise.all([
     prisma.event.findMany({
-      where: { publishStatus: 'ready' },
+      where: { publishStatus: { in: ['ready', 'draft'] } },
       include: {
         proposedChangeSets: {
           where: { reviewStatus: 'approved' },
           orderBy: { reviewedAt: 'desc' },
           take: 1,
-          select: {
-            reviewedByUserId: true,
-            reviewedAt: true,
-            id: true
-          }
+          include: { fieldReviews: true, duplicateCandidates: true }
         }
       },
       orderBy: { updatedAt: 'desc' },
-      take: 100
+      take: 200
     }),
     prisma.publishBatch.findMany({
       orderBy: { publishedAt: 'desc' },
@@ -29,9 +27,53 @@ export default async function PublishQueuePage() {
     })
   ]);
 
+  const readyEvents = events.filter((row) => row.publishStatus === 'ready');
+  const blocked = events
+    .filter((row) => row.publishStatus !== 'published')
+    .map((event) => {
+      const latest = event.proposedChangeSets[0];
+      const readiness = latest
+        ? checkPublishReadiness({
+            proposedDataJson: asRecord(latest.proposedDataJson),
+            fieldReviews: latest.fieldReviews,
+            duplicateCandidates: latest.duplicateCandidates
+          })
+        : { ready: false, blockers: ['No approved change set'], warnings: [] };
+      return { event, readiness };
+    })
+    .filter((row) => !row.readiness.ready);
+
+  const blockerClusters = groupByKey(blocked, (row) => row.readiness.blockers[0] ?? 'unknown blocker');
+
   return (
     <div className="stack">
       <PageHeader title="Publish queue" description="Explicit release governance with reversible history." />
+
+      <SectionCard title="Batch publish triage" subtitle="Grouped ready records, grouped blocked records, and blocker clustering.">
+        <div className="stats-grid">
+          <article className="card"><h3>Grouped ready records</h3><p>{readyEvents.length}</p></article>
+          <article className="card"><h3>Grouped blocked records</h3><p>{blocked.length}</p></article>
+          <article className="card"><h3>Blocker clusters</h3><p>{blockerClusters.length}</p></article>
+        </div>
+        <div className="two-col">
+          <article>
+            <h3>Top blocker clusters</h3>
+            <ul className="timeline">
+              {blockerClusters.slice(0, 8).map((cluster) => (
+                <li key={cluster.key}>
+                  <strong>{cluster.key}</strong>
+                  <p className="kpi-note">{cluster.count} records</p>
+                </li>
+              ))}
+            </ul>
+          </article>
+          <article className="stack">
+            <h3>Batch release notes</h3>
+            <textarea className="input" rows={5} defaultValue={'Batch publish summary:\n- Scope:\n- Risk checks:\n- Rollback plan:'} />
+            <button className="action-button variant-primary" type="button">Grouped publish confirmation</button>
+          </article>
+        </div>
+      </SectionCard>
 
       <SectionCard title="Ready to publish" subtitle="Each publish action requires a release summary and links into audit trail.">
         <p className="muted">
@@ -100,4 +142,9 @@ export default async function PublishQueuePage() {
       </SectionCard>
     </div>
   );
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
 }

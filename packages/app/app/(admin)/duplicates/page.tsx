@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
 import { prisma } from '@/lib/db';
+import { groupByKey } from '@/lib/admin/batch-workflows';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,12 +22,18 @@ export default async function DuplicateQueuePage({
   const candidates = await prisma.duplicateCandidate.findMany({
     where,
     include: {
-      proposedChangeSet: { select: { id: true, reviewStatus: true } },
+      proposedChangeSet: { select: { id: true, reviewStatus: true, sourceDocument: { select: { sourceUrl: true } } } },
       canonicalEvent: { select: { id: true, title: true } }
     },
     orderBy: [{ unresolvedBlockerCount: 'desc' }, { matchConfidence: 'desc' }, { updatedAt: 'desc' }],
     take: 300
   });
+
+  const byHotspot = groupByKey(candidates, (row) => row.source ?? 'unknown');
+  const byCanonical = groupByKey(candidates, (row) => row.canonicalEventId ?? 'none');
+  const byConflict = groupByKey(candidates, (row) =>
+    row.unresolvedBlockerCount > 0 ? 'publish-blocker' : row.conflictingSourceCount > 0 ? 'conflicting-values' : 'low-corroboration'
+  );
 
   return (
     <div className="stack">
@@ -40,6 +47,19 @@ export default async function DuplicateQueuePage({
               {filter}
             </Link>
           ))}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Grouped duplicate triage" subtitle="Batch triage by hotspot source, canonical target, and conflict type.">
+        <div className="three-col">
+          <GroupList title="Hotspot source" groups={byHotspot} />
+          <GroupList title="Canonical target" groups={byCanonical} />
+          <GroupList title="Conflict type" groups={byConflict} />
+        </div>
+        <div className="filters-row" style={{ marginTop: 12 }}>
+          <button className="action-button variant-secondary" type="button">Bulk false-positive</button>
+          <button className="action-button variant-secondary" type="button">Bulk separate-record</button>
+          <button className="action-button variant-primary" type="button">Bulk defer</button>
         </div>
       </SectionCard>
 
@@ -71,9 +91,6 @@ export default async function DuplicateQueuePage({
                   <td>
                     <div className="filters-row">
                       <Link href={`/duplicates/${row.id}`} className="action-button variant-primary">Open compare</Link>
-                      <Link href={`/duplicates/${row.id}`} className="action-button variant-secondary">Merge</Link>
-                      <Link href={`/duplicates/${row.id}`} className="action-button variant-secondary">Keep separate</Link>
-                      <Link href={`/duplicates/${row.id}`} className="action-button variant-secondary">Mark false positive</Link>
                     </div>
                   </td>
                 </tr>
@@ -83,6 +100,22 @@ export default async function DuplicateQueuePage({
         )}
       </SectionCard>
     </div>
+  );
+}
+
+function GroupList({ title, groups }: { title: string; groups: Array<{ key: string; count: number }> }) {
+  return (
+    <article>
+      <h3>{title}</h3>
+      <ul className="timeline">
+        {groups.slice(0, 8).map((group) => (
+          <li key={`${title}-${group.key}`}>
+            <strong>{group.key}</strong>
+            <p className="kpi-note">{group.count} candidates</p>
+          </li>
+        ))}
+      </ul>
+    </article>
   );
 }
 
