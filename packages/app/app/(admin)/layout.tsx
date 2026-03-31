@@ -40,6 +40,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       label: 'Investigations',
       items: [
         { href: '/investigations', label: 'Case Workspace', roles: ['admin', 'operator', 'moderator'] },
+        { href: '/recovery-studio', label: 'Recovery Studio', roles: ['admin', 'operator'] },
         { href: '/data', label: 'Data Quality', roles: ['admin', 'operator'] },
         { href: '/discovery', label: 'Discovery', roles: ['admin', 'operator'] }
       ]
