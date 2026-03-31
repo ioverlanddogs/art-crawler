@@ -43,7 +43,7 @@ describe('workbench routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     requireRoleMock.mockResolvedValue({ user: { id: 'op-1', role: 'operator', status: 'ACTIVE' } });
-    prismaMock.$transaction.mockImplementation(async (callback: any) => callback(prismaMock));
+    prismaMock.$transaction.mockImplementation(async (arg: any) => (typeof arg === 'function' ? arg(prismaMock) : Promise.all(arg)));
   });
 
   test('GET /fields returns 404 for unknown id', async () => {
@@ -166,6 +166,32 @@ describe('workbench routes', () => {
     await expect(response.json()).resolves.toEqual(expect.objectContaining({ eventId: 'evt-1', created: true }));
   });
 
+
+  test('POST /fields auto-approves safe fields', async () => {
+    const { POST } = await import('@/app/api/admin/workbench/[changeSetId]/fields/route');
+    prismaMock.proposedChangeSet.findUnique.mockResolvedValueOnce({
+      id: 'pcs-1',
+      proposedDataJson: { title: 'Show', startAt: '2026-04-01T19:00:00Z' },
+      fieldReviews: []
+    });
+    prismaMock.fieldReview.upsert.mockResolvedValue({ id: 'fr-1' });
+
+    const response = await POST(new Request('http://localhost', { method: 'POST' }), { params: { changeSetId: 'pcs-1' } });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({ updated: 2 }));
+  });
+
+  test('POST /reparse queues ingestion job', async () => {
+    const { POST } = await import('@/app/api/admin/workbench/[changeSetId]/reparse/route');
+    prismaMock.proposedChangeSet.findUnique.mockResolvedValueOnce({ id: 'pcs-1', sourceDocumentId: 'sd-1', notes: null });
+    prismaMock.ingestionJob.findFirst.mockResolvedValueOnce({ id: 'job-1' });
+
+    const response = await POST(new Request('http://localhost', { method: 'POST' }), { params: { changeSetId: 'pcs-1' } });
+
+    expect(response.status).toBe(200);
+    expect(prismaMock.ingestionJob.update).toHaveBeenCalled();
+  });
   test('POST /reject returns 200 and marks changeset rejected', async () => {
     const { POST } = await import('@/app/api/admin/workbench/[changeSetId]/reject/route');
     prismaMock.proposedChangeSet.findUnique.mockResolvedValueOnce({ id: 'pcs-1', sourceDocumentId: 'sd-1' });

@@ -150,4 +150,24 @@ describe('versioning', () => {
 
     expect(response.status).toBe(400);
   });
+
+  test('rollback preview returns diff without write', async () => {
+    prismaMock.event.findUnique.mockResolvedValueOnce({ id: 'evt-1', title: 'Current', startAt: new Date('2026-02-02T10:00:00.000Z'), endAt: null, timezone: 'UTC', location: null, description: null });
+    prismaMock.canonicalRecordVersion.findUnique.mockResolvedValueOnce({ id: 'ver-1', eventId: 'evt-1', versionNumber: 1, dataJson: { title: 'Historic', startAt: '2026-02-01T10:00:00.000Z' } });
+    prismaMock.canonicalRecordVersion.findFirst.mockResolvedValueOnce({ versionNumber: 2 });
+
+    const { POST } = await import('@/app/api/admin/publish/[eventId]/rollback/route');
+    const response = await POST(
+      new Request('http://localhost', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ versionNumber: 1, reason: 'Preview', preview: true })
+      }),
+      { params: { eventId: 'evt-1' } }
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual(expect.objectContaining({ destructive: false }));
+    expect(prismaMock.event.update).not.toHaveBeenCalled();
+  });
 });

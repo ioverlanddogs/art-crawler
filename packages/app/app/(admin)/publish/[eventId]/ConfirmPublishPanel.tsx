@@ -2,13 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SectionCard, ToastRegion, type ToastMessage } from '@/components/admin';
+import { ConfirmDialog, SectionCard, ToastRegion, type ToastMessage } from '@/components/admin';
 
 export function ConfirmPublishPanel({ eventId, blockers, warnings }: { eventId: string; blockers: string[]; warnings: string[] }) {
   const router = useRouter();
   const [releaseSummary, setReleaseSummary] = useState('');
   const [pending, setPending] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   function pushToast(message: Omit<ToastMessage, 'id'>) {
     setToasts((current) => [...current, { id: crypto.randomUUID(), ...message }]);
@@ -74,10 +75,23 @@ export function ConfirmPublishPanel({ eventId, blockers, warnings }: { eventId: 
       </div>
 
       <div className="filters-row">
-        <button type="button" className="action-button variant-primary" disabled={pending || blockers.length > 0} onClick={() => void onConfirm()}>
+        <button type="button" className="action-button variant-primary" disabled={pending || blockers.length > 0} onClick={() => setConfirmOpen(true)}>
           {pending ? 'Publishing…' : 'Confirm publish'}
         </button>
       </div>
+      <ConfirmDialog
+        open={confirmOpen}
+        title="Confirm publish"
+        body="Publishing is immediate. You can roll back later from version history."
+        tone="default"
+        confirmLabel="Publish now"
+        submitting={pending}
+        onCancel={() => setConfirmOpen(false)}
+        onConfirm={() => {
+          setConfirmOpen(false);
+          void onConfirm();
+        }}
+      />
     </SectionCard>
   );
 }

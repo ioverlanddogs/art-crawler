@@ -10,13 +10,16 @@ export async function PATCH(request: Request, { params }: { params: { changeSetI
   }
 
   const payload = await request.json().catch(() => null);
-  if (payload?.reviewStatus !== 'draft') {
+  const reviewStatus = payload?.reviewStatus;
+  const notes = typeof payload?.notes === 'string' ? payload.notes : undefined;
+
+  if (reviewStatus !== 'draft') {
     return err('Only reviewStatus=draft is supported.', 'INVALID_REVIEW_STATUS', 400);
   }
 
   const updated = await prisma.proposedChangeSet.update({
     where: { id: params.changeSetId },
-    data: { reviewStatus: 'draft' }
+    data: { reviewStatus: 'draft', ...(notes !== undefined ? { notes } : {}) }
   }).catch(() => null);
 
   if (!updated) {

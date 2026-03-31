@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/db';
 import { computeDiff } from '@/lib/intake/compute-diff';
+import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 import { requireRole } from '@/lib/auth-guard';
 import { WorkbenchClient } from './WorkbenchClient';
 
@@ -35,6 +36,12 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
       })
     : null;
 
+  const latestIngestionJob = await prisma.ingestionJob.findFirst({
+    where: { sourceDocumentId: changeSet.sourceDocumentId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true }
+  });
+
   return (
     <WorkbenchClient
       initialData={{
@@ -51,7 +58,10 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
           ...changeSet.sourceDocument,
           metadataJson: asRecord(changeSet.sourceDocument.metadataJson)
         },
-        currentUserRole: session.user.role
+        currentUserRole: session.user.role,
+        notes: changeSet.notes ?? null,
+        validationSummary: checkPublishReadiness({ proposedDataJson: proposedData, fieldReviews: changeSet.fieldReviews }),
+        latestIngestionJobId: latestIngestionJob?.id ?? null
       }}
     />
   );
