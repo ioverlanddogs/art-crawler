@@ -79,6 +79,42 @@ enum EnrichmentRunStatus {
   SKIPPED
 }
 
+enum IngestionJobStatus {
+  queued
+  fetching
+  extracting
+  parsing
+  matching
+  needs_review
+  approved
+  publishing
+  published
+  failed
+}
+
+enum ProposedChangeSetStatus {
+  draft
+  in_review
+  approved
+  rejected
+  merged
+}
+
+enum FieldDecision {
+  accepted
+  edited
+  rejected
+  uncertain
+}
+
+enum PublishStatus {
+  unpublished
+  ready
+  blocked
+  published
+  rolled_back
+}
+
 model AdminUser {
   id            String           @id @default(cuid())
   email         String           @unique
@@ -175,18 +211,134 @@ model Artwork {
 }
 
 model Event {
-  id          String    @id @default(cuid())
-  venueId     String?
-  title       String
-  startAt     DateTime
-  endAt       DateTime?
-  timezone    String?
-  location    String?
-  description String?
-  sourceUrl   String?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  venue       Venue?    @relation(fields: [venueId], references: [id])
+  id                 String              @id @default(cuid())
+  venueId            String?
+  title              String
+  startAt            DateTime
+  endAt              DateTime?
+  timezone           String?
+  location           String?
+  description        String?
+  sourceUrl          String?
+  publishStatus      PublishStatus       @default(unpublished)
+  publishedAt        DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  venue              Venue?              @relation(fields: [venueId], references: [id])
+  proposedChangeSets ProposedChangeSet[]
+}
+
+model SourceDocument {
+  id            String   @id @default(cuid())
+  sourceUrl     String
+  sourceType    String?
+  fetchedAt     DateTime?
+  httpStatus    Int?
+  fingerprint   String?
+  rawHtml       String?
+  extractedText String?
+  metadataJson  Json?
+  mediaJson     Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  ingestionJobs  IngestionJob[]
+  extractionRuns ExtractionRun[]
+  proposedChangeSets ProposedChangeSet[]
+
+  @@index([fingerprint])
+  @@index([createdAt(sort: Desc)])
+}
+
+model IngestionJob {
+  id                String             @id @default(cuid())
+  sourceDocumentId  String
+  requestedByUserId String?
+  status            IngestionJobStatus @default(queued)
+  startedAt         DateTime?
+  completedAt       DateTime?
+  errorCode         String?
+  errorMessage      String?
+  pipelineVersion   String?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt(sort: Desc)])
+  @@index([sourceDocumentId])
+}
+
+model ExtractionRun {
+  id                  String   @id @default(cuid())
+  sourceDocumentId    String
+  modelVersion        String?
+  parserVersion       String?
+  extractedFieldsJson Json?
+  confidenceJson      Json?
+  evidenceJson        Json?
+  warningsJson        Json?
+  createdAt           DateTime @default(now())
+
+  sourceDocument     SourceDocument      @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  proposedChangeSets ProposedChangeSet[]
+ 
+  @@index([sourceDocumentId, createdAt(sort: Desc)])
+}
+
+model ProposedChangeSet {
+  id               String                  @id @default(cuid())
+  sourceDocumentId String
+  extractionRunId  String?
+  matchedEventId   String?
+  proposedDataJson Json?
+  diffJson         Json?
+  reviewStatus     ProposedChangeSetStatus @default(draft)
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  notes            String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  extractionRun  ExtractionRun? @relation(fields: [extractionRunId], references: [id])
+  matchedEvent   Event?         @relation(fields: [matchedEventId], references: [id])
+  fieldReviews   FieldReview[]
+
+  @@index([reviewStatus, createdAt(sort: Desc)])
+  @@index([sourceDocumentId])
+}
+
+model FieldReview {
+  id                  String        @id @default(cuid())
+  proposedChangeSetId String
+  fieldPath           String
+  proposedValueJson   Json?
+  canonicalValueJson  Json?
+  confidence          Float?
+  evidenceRefsJson    Json?
+  decision            FieldDecision?
+  reviewerId          String?
+  reviewerComment     String?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  proposedChangeSet ProposedChangeSet @relation(fields: [proposedChangeSetId], references: [id], onDelete: Cascade)
+
+  @@index([proposedChangeSetId])
+  @@unique([proposedChangeSetId, fieldPath])
+}
+
+model PublishBatch {
+  id              String   @id @default(cuid())
+  createdByUserId String?
+  status          String   @default("pending")
+  eventIdsJson    Json
+  releaseSummary  String?
+  publishedAt     DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([createdAt(sort: Desc)])
 }
 
 model IngestExtractedEvent {
