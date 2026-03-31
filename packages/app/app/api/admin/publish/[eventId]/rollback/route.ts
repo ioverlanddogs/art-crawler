@@ -16,6 +16,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   const body = await request.json().catch(() => ({}));
   const versionNumber = Number(body?.versionNumber);
   const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
+  const previewOnly = body?.preview === true;
 
   if (!Number.isInteger(versionNumber) || versionNumber < 1 || !reason) {
     return err('versionNumber and reason are required.', 'INVALID_INPUT', 400);
@@ -44,6 +45,24 @@ export async function POST(request: Request, { params }: { params: { eventId: st
   }
 
   const snapshot = asRecord(targetVersion.dataJson);
+
+  const preview = {
+    eventId: params.eventId,
+    targetVersion: versionNumber,
+    currentVersion: latestVersion.versionNumber,
+    changes: {
+      title: [event.title, asString(snapshot.title) ?? event.title],
+      startAt: [event.startAt, asDate(snapshot.startAt) ?? event.startAt],
+      endAt: [event.endAt, asDate(snapshot.endAt)],
+      timezone: [event.timezone, asNullableString(snapshot.timezone)],
+      location: [event.location, asNullableString(snapshot.location)],
+      description: [event.description, asNullableString(snapshot.description)]
+    }
+  };
+
+  if (previewOnly) {
+    return Response.json({ preview, destructive: false });
+  }
 
   await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const rolledBackEvent = await tx.event.update({
@@ -95,7 +114,7 @@ export async function POST(request: Request, { params }: { params: { eventId: st
     });
   });
 
-  return Response.json({ rolledBack: true, versionNumber });
+  return Response.json({ rolledBack: true, versionNumber, preview });
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

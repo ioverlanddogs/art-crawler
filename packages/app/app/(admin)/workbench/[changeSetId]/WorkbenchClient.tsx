@@ -12,6 +12,8 @@ interface FieldReview {
   decision: FieldDecision;
   confidence: number | null;
   proposedValueJson: unknown;
+  reviewerComment?: string | null;
+  evidenceRefsJson?: unknown;
 }
 
 interface DiffField {
@@ -27,6 +29,7 @@ interface WorkbenchData {
   matchedEventId: string | null;
   proposedDataJson: Record<string, unknown>;
   reviewStatus: string;
+  notes: string | null;
   fieldReviews: FieldReview[];
   sourceDocument: {
     sourceUrl: string;
@@ -46,6 +49,12 @@ interface WorkbenchData {
     updatedCount: number;
     unchangedCount: number;
   };
+  validationSummary: {
+    blockers: string[];
+    warnings: string[];
+    ready: boolean;
+  };
+  latestIngestionJobId: string | null;
   currentUserRole: 'viewer' | 'moderator' | 'operator' | 'admin';
 }
 
@@ -63,10 +72,12 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
   const [focusedIndex, setFocusedIndex] = useState(0);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editingValue, setEditingValue] = useState('');
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [mergeStrategy, setMergeStrategy] = useState<'create_new' | 'merge_existing'>(data.matchedEvent ? 'merge_existing' : 'create_new');
   const [publishResult, setPublishResult] = useState<{ blockers: string[]; warnings: string[] } | null>(null);
   const [rejectOpen, setRejectOpen] = useState(false);
-  const [busy, setBusy] = useState<'approve' | 'reject' | 'draft' | null>(null);
+  const [notesDraft, setNotesDraft] = useState(data.notes ?? '');
+  const [busy, setBusy] = useState<'approve' | 'reject' | 'draft' | 'safe' | 'reparse' | null>(null);
 
   const fields = useMemo(
     () => Object.entries(data.proposedDataJson ?? {}).map(([fieldPath, value]) => ({ fieldPath, value })),
@@ -95,6 +106,10 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
         event.preventDefault();
         void applyDecision(focusedField, 'rejected');
       }
+      if (event.key.toLowerCase() === 'u' && focusedField) {
+        event.preventDefault();
+        void applyDecision(focusedField, 'uncertain');
+      }
       if (event.key.toLowerCase() === 'e' && focusedField) {
         event.preventDefault();
         openEdit(focusedField);
@@ -104,6 +119,14 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [fields.length, focusedField]);
+
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      void refreshData();
+    }, 15000);
+    return () => window.clearInterval(interval);
+  }, [data.id]);
 
   function reviewFor(fieldPath: string): FieldReview | undefined {
     return data.fieldReviews.find((fieldReview) => fieldReview.fieldPath === fieldPath);
@@ -118,7 +141,10 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
   }
 
   async function applyDecision(fieldPath: string, decision: Exclude<FieldDecision, null>, editedValue?: string) {
-    const payload: Record<string, unknown> = { decision };
+    const payload: Record<string, unknown> = {
+      decision,
+      reviewerComment: commentDrafts[fieldPath]?.trim() || undefined
+    };
     if (editedValue !== undefined) {
       payload.editedValue = editedValue;
     }
@@ -159,8 +185,8 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
       return;
     }
 
-    const result = (await response.json()) as { ingestionJobId?: string | null };
-    router.push(result.ingestionJobId ? `/intake/${result.ingestionJobId}` : '/intake');
+    const result = (await response.json()) as { ingestionJobId?: string | null; eventId?: string };
+    router.push(result.eventId ? `/publish/${result.eventId}` : result.ingestionJobId ? `/intake/${result.ingestionJobId}` : '/intake');
   }
 
   async function saveDraft() {
@@ -168,10 +194,26 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
     await fetch(`/api/admin/workbench/${data.id}`, {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ reviewStatus: 'draft' })
+      body: JSON.stringify({ reviewStatus: 'draft', notes: notesDraft })
     });
     setBusy(null);
     await refreshData();
+  }
+
+  async function approveSafeFields() {
+    setBusy('safe');
+    await fetch(`/api/admin/workbench/${data.id}/fields`, { method: 'POST' });
+    setBusy(null);
+    await refreshData();
+  }
+
+  async function requestReparse() {
+    setBusy('reparse');
+    const response = await fetch(`/api/admin/workbench/${data.id}/reparse`, { method: 'POST' });
+    setBusy(null);
+    if (response.ok && data.latestIngestionJobId) {
+      router.push(`/intake/${data.latestIngestionJobId}`);
+    }
   }
 
   async function reject(reason: string) {
@@ -202,10 +244,14 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
           focusedIndex={focusedIndex}
           onFocus={setFocusedIndex}
           reviewFor={reviewFor}
+          evidenceJson={data.extractionRun?.evidenceJson ?? null}
           editingField={editingField}
           editingValue={editingValue}
           onEditingValue={setEditingValue}
+          commentDrafts={commentDrafts}
+          onCommentDraft={setCommentDrafts}
           onAccept={(fieldPath) => applyDecision(fieldPath, 'accepted')}
+          onUncertain={(fieldPath) => applyDecision(fieldPath, 'uncertain')}
           onReject={(fieldPath) => applyDecision(fieldPath, 'rejected')}
           onEdit={openEdit}
           onSaveEdit={(fieldPath) => applyDecision(fieldPath, 'edited', editingValue)}
@@ -219,17 +265,32 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
           onMergeStrategy={setMergeStrategy}
           hasMatchedEvent={Boolean(data.matchedEvent)}
           publishResult={publishResult}
+          validationSummary={data.validationSummary}
           canRollback={data.currentUserRole === 'admin'}
         />
       </div>
 
+      <SectionCard title="Validation blockers">
+        <ValidationSummaryPanel validationSummary={publishResult ?? data.validationSummary} />
+      </SectionCard>
+
       <SectionCard title="Actions">
+        <div className="stack">
+          <label htmlFor="review-notes">Reviewer notes</label>
+          <textarea id="review-notes" className="text-area" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} placeholder="Context for other operators and publish reviewers" />
+        </div>
         <div className="filters-row">
           <button type="button" className="action-button variant-primary" onClick={approve} disabled={busy !== null}>
             Approve and merge
           </button>
+          <button type="button" className="action-button variant-secondary" onClick={approveSafeFields} disabled={busy !== null}>
+            Approve all safe fields
+          </button>
           <button type="button" className="action-button variant-secondary" onClick={saveDraft} disabled={busy !== null}>
             Save draft
+          </button>
+          <button type="button" className="action-button variant-secondary" onClick={requestReparse} disabled={busy !== null}>
+            Request re-parse
           </button>
           <button type="button" className="action-button variant-danger" onClick={() => setRejectOpen(true)} disabled={busy !== null}>
             Reject import
@@ -252,6 +313,29 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
           }
         }}
       />
+    </div>
+  );
+}
+
+function ValidationSummaryPanel({ validationSummary }: { validationSummary: { blockers: string[]; warnings: string[] } }) {
+  return (
+    <div className="stack">
+      {validationSummary.blockers.length > 0 ? (
+        <ul className="tone-danger alert-banner">
+          {validationSummary.blockers.map((blocker) => (
+            <li key={blocker}>{blocker}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="tone-success alert-banner">No blockers. This record can proceed.</p>
+      )}
+      {validationSummary.warnings.length > 0 ? (
+        <ul className="tone-warning alert-banner">
+          {validationSummary.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -297,10 +381,14 @@ function ProposedFieldsPanel({
   focusedIndex,
   onFocus,
   reviewFor,
+  evidenceJson,
   editingField,
   editingValue,
   onEditingValue,
+  commentDrafts,
+  onCommentDraft,
   onAccept,
+  onUncertain,
   onReject,
   onEdit,
   onSaveEdit
@@ -309,10 +397,14 @@ function ProposedFieldsPanel({
   focusedIndex: number;
   onFocus: (index: number) => void;
   reviewFor: (fieldPath: string) => FieldReview | undefined;
+  evidenceJson: Record<string, unknown> | null;
   editingField: string | null;
   editingValue: string;
   onEditingValue: (value: string) => void;
+  commentDrafts: Record<string, string>;
+  onCommentDraft: (draft: Record<string, string>) => void;
   onAccept: (fieldPath: string) => void;
+  onUncertain: (fieldPath: string) => void;
   onReject: (fieldPath: string) => void;
   onEdit: (fieldPath: string) => void;
   onSaveEdit: (fieldPath: string) => void;
@@ -323,6 +415,7 @@ function ProposedFieldsPanel({
         {fields.map((field, index) => {
           const review = reviewFor(field.fieldPath);
           const isFocused = focusedIndex === index;
+          const hasEvidence = Boolean(evidenceJson && evidenceJson[field.fieldPath]);
           return (
             <div
               key={field.fieldPath}
@@ -344,12 +437,11 @@ function ProposedFieldsPanel({
                     />
                   </div>
                 </div>
-                <span className={`status-badge ${confidenceTone(review?.confidence ?? null)}`}>
-                  {formatConfidence(review?.confidence ?? null)}
-                </span>
+                <span className={`status-badge ${confidenceTone(review?.confidence ?? null)}`}>{formatConfidence(review?.confidence ?? null)}</span>
+                <span className={`status-badge ${hasEvidence ? 'tone-success' : 'tone-neutral'}`}>{hasEvidence ? 'evidence' : 'no evidence'}</span>
                 <span className={`status-badge ${decisionTone(review?.decision ?? null)}`}>{review?.decision ?? 'unreviewed'}</span>
               </div>
-              <p className="muted">{stringifyValue(field.value).slice(0, 80)}</p>
+              <p className="muted">{stringifyValue(field.value).slice(0, 120)}</p>
               {editingField === field.fieldPath ? (
                 <div className="filters-row">
                   <input className="input" value={editingValue} onChange={(event) => onEditingValue(event.target.value)} />
@@ -358,12 +450,25 @@ function ProposedFieldsPanel({
                   </button>
                 </div>
               ) : null}
+              <div className="stack">
+                <label className="muted" htmlFor={`comment-${field.fieldPath}`}>Field note</label>
+                <input
+                  id={`comment-${field.fieldPath}`}
+                  className="input"
+                  value={commentDrafts[field.fieldPath] ?? review?.reviewerComment ?? ''}
+                  onChange={(event) => onCommentDraft({ ...commentDrafts, [field.fieldPath]: event.target.value })}
+                  placeholder="Add reviewer rationale"
+                />
+              </div>
               <div className="filters-row">
                 <button type="button" className="action-button variant-secondary" onClick={() => onAccept(field.fieldPath)}>
                   Accept
                 </button>
                 <button type="button" className="action-button variant-secondary" onClick={() => onEdit(field.fieldPath)}>
                   Edit
+                </button>
+                <button type="button" className="action-button variant-secondary" onClick={() => onUncertain(field.fieldPath)}>
+                  Mark uncertain
                 </button>
                 <button type="button" className="action-button variant-danger" onClick={() => onReject(field.fieldPath)}>
                   Reject
@@ -385,6 +490,7 @@ function CanonicalComparisonPanel({
   onMergeStrategy,
   hasMatchedEvent,
   publishResult,
+  validationSummary,
   canRollback
 }: {
   eventId: string | null;
@@ -394,6 +500,7 @@ function CanonicalComparisonPanel({
   onMergeStrategy: (strategy: 'create_new' | 'merge_existing') => void;
   hasMatchedEvent: boolean;
   publishResult: { blockers: string[]; warnings: string[] } | null;
+  validationSummary: { blockers: string[]; warnings: string[] };
   canRollback: boolean;
 }) {
   const [versions, setVersions] = useState<CanonicalVersion[]>([]);
@@ -470,24 +577,7 @@ function CanonicalComparisonPanel({
           </label>
         </div>
 
-        <div className="stack">
-          {publishResult?.blockers?.length ? (
-            <ul className="tone-danger alert-banner">
-              {publishResult.blockers.map((blocker) => (
-                <li key={blocker}>{blocker}</li>
-              ))}
-            </ul>
-          ) : (
-            <p className="tone-success alert-banner">Ready to approve</p>
-          )}
-          {publishResult?.warnings?.length ? (
-            <ul className="tone-warning alert-banner">
-              {publishResult.warnings.map((warning) => (
-                <li key={warning}>{warning}</li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+        <ValidationSummaryPanel validationSummary={publishResult ?? validationSummary} />
 
         {eventId ? (
           <div className="stack">

@@ -4,6 +4,59 @@ import { prisma } from '@/lib/db';
 import type { Prisma } from '@/lib/prisma-client';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 
+export async function GET(_request: Request, { params }: { params: { eventId: string } }) {
+  try {
+    await requireRole(['viewer', 'moderator', 'operator', 'admin']);
+  } catch (error) {
+    return authFailure(error);
+  }
+
+  const event = await prisma.event.findUnique({ where: { id: params.eventId } });
+  if (!event) return notFound('Event');
+
+  const latestApprovedChangeSet = await prisma.proposedChangeSet.findFirst({
+    where: {
+      matchedEventId: event.id,
+      reviewStatus: 'approved'
+    },
+    include: {
+      fieldReviews: true,
+      extractionRun: true
+    },
+    orderBy: { reviewedAt: 'desc' }
+  });
+
+  if (!latestApprovedChangeSet) {
+    return Response.json({ event, publishDetail: null });
+  }
+
+  const diffJson = asRecord(latestApprovedChangeSet.diffJson);
+  const changedFields = Object.keys(diffJson);
+  const evidenceMap = asRecord(latestApprovedChangeSet.extractionRun?.evidenceJson);
+  const readiness = checkPublishReadiness({
+    proposedDataJson: asRecord(latestApprovedChangeSet.proposedDataJson),
+    fieldReviews: latestApprovedChangeSet.fieldReviews
+  });
+
+  return Response.json({
+    event,
+    publishDetail: {
+      changeSetId: latestApprovedChangeSet.id,
+      reviewer: latestApprovedChangeSet.reviewedByUserId,
+      reviewedAt: latestApprovedChangeSet.reviewedAt,
+      blockers: readiness.blockers,
+      warnings: readiness.warnings,
+      evidenceCoverage: Object.keys(evidenceMap).length,
+      changedFields: changedFields.map((fieldPath) => ({
+        fieldPath,
+        previous: diffJson[fieldPath] && typeof diffJson[fieldPath] === 'object' ? asRecord(diffJson[fieldPath]).from ?? null : null,
+        next: diffJson[fieldPath] && typeof diffJson[fieldPath] === 'object' ? asRecord(diffJson[fieldPath]).to ?? null : null,
+        hasEvidence: Object.prototype.hasOwnProperty.call(evidenceMap, fieldPath)
+      }))
+    }
+  });
+}
+
 export async function POST(request: Request, { params }: { params: { eventId: string } }) {
   let session;
   try {

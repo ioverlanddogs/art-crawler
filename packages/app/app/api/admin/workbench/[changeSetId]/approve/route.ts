@@ -79,7 +79,7 @@ export async function POST(request: Request, { params }: { params: { changeSetId
     await tx.proposedChangeSet.update({
       where: { id: changeSet.id },
       data: {
-        reviewStatus: 'merged',
+        reviewStatus: 'approved',
         reviewedAt: new Date(),
         reviewedByUserId: session.user.id
       }

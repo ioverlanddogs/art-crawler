@@ -15,7 +15,8 @@ export default async function PublishQueuePage() {
           take: 1,
           select: {
             reviewedByUserId: true,
-            reviewedAt: true
+            reviewedAt: true,
+            id: true
           }
         }
       },
@@ -30,9 +31,9 @@ export default async function PublishQueuePage() {
 
   return (
     <div className="stack">
-      <PageHeader title="Publish queue" description="Records approved and ready for public release." />
+      <PageHeader title="Publish queue" description="Explicit release governance with reversible history." />
 
-      <SectionCard title="Ready to publish">
+      <SectionCard title="Ready to publish" subtitle="Each publish action requires a release summary and links into audit trail.">
         {readyEvents.length === 0 ? (
           <EmptyState title="No events are ready" description="Approved records will appear here once they pass readiness checks." />
         ) : (
@@ -41,10 +42,9 @@ export default async function PublishQueuePage() {
               <thead>
                 <tr>
                   <th scope="col">Title</th>
-                  <th scope="col">Change type</th>
                   <th scope="col">Reviewer</th>
                   <th scope="col">Ready since</th>
-                  <th scope="col">Actions</th>
+                  <th scope="col">Release governance</th>
                 </tr>
               </thead>
               <tbody>
@@ -53,13 +53,17 @@ export default async function PublishQueuePage() {
                   return (
                     <tr key={event.id}>
                       <td>{event.title}</td>
-                      <td>{event.sourceUrl ? 'updated' : 'created'}</td>
                       <td>{latest?.reviewedByUserId ?? '—'}</td>
                       <td>{latest?.reviewedAt ? latest.reviewedAt.toLocaleString() : event.updatedAt.toLocaleString()}</td>
                       <td>
-                        <Link href={`/publish/${event.id}`} className="action-button variant-primary">
-                          Publish
-                        </Link>
+                        <div className="filters-row">
+                          <Link href={`/publish/${event.id}`} className="action-button variant-primary">
+                            Review + publish
+                          </Link>
+                          <Link href={`/audit?entityType=Event&entityId=${encodeURIComponent(event.id)}`} className="action-button variant-secondary">
+                            Audit trail
+                          </Link>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -81,6 +85,7 @@ export default async function PublishQueuePage() {
                   <strong>{batch.id}</strong> · {batch.status}
                 </p>
                 <p className="kpi-note">{batch.publishedAt ? batch.publishedAt.toLocaleString() : 'Not yet published'}</p>
+                <p className="kpi-note">{batch.releaseSummary ?? 'No release summary recorded.'}</p>
               </li>
             ))}
           </ul>
