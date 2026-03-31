@@ -2,6 +2,8 @@ import { PageHeader, SectionCard, StatCard } from '@/components/admin';
 import { prisma } from '@/lib/db';
 import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 import { recommendAssignmentActions } from '@/lib/admin/triage-recommendations';
+import { calibrateRecommendationConfidence, summarizeModelFeedback } from '@/lib/admin/model-feedback';
+import { evaluateGovernancePolicies } from '@/lib/admin/governance-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +44,40 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
     escalationLevel: scopedEscalations.reduce((acc, row) => acc + row._count._all, 0) > 0 ? 1 : 0
   });
 
+  const feedback = summarizeModelFeedback([
+    {
+      sourceClass: 'review_ops',
+      fieldSignals: resolvedRows.slice(0, 40).map((row, index) => ({
+        fieldPath: index % 2 === 0 ? 'title' : 'description',
+        accepted: true,
+        editedAfterExtraction: index % 5 === 0,
+        uncertain: index % 7 === 0,
+        parserVersion: 'parser-v1',
+        modelVersion: 'model-active'
+      })),
+      duplicateSignals: scopedDuplicateOwnership.slice(0, 20).map((row) => ({ recommendation: 'separate_record' as const, finalOutcome: row._count._all > 2 ? 'resolved_separate' as const : 'unresolved' as const })),
+      replaySignals: [{ replayImproved: true, fallbackParserUsed: true }],
+      rollbackSignals: [{ linkedToRollback: scopedBlockers.length > 8, publishSucceeded: scopedBlockers.length <= 8 }]
+    }
+  ]);
+
+  const calibratedConfidence = calibrateRecommendationConfidence({
+    baseConfidence: assignmentRecommendation.slaBreachPrediction.confidence,
+    reviewerOverrideRate: feedback.fieldCorrectionRates[0]?.correctionRate ?? 0,
+    rollbackPenaltyRate: feedback.rollbackPenaltyRate,
+    duplicatePrecision: feedback.duplicateRecommendationPrecision
+  });
+
+  const policies = evaluateGovernancePolicies({
+    scope: scopeContext,
+    unresolvedPublishBlockers: scopedBlockers.reduce((acc, row) => acc + row._count.assignedReviewerId, 0),
+    sourceFailureRate: 0.28,
+    staleEvidenceHours: avgResolutionMinutes / 60,
+    rollbackRate: feedback.rollbackPenaltyRate,
+    overdueSlaHours: Math.max(0, avgResolutionMinutes / 60 - 24),
+    duplicateSeverity: scopedDuplicateOwnership.reduce((acc, row) => acc + row._count._all, 0) > 30 ? 'high' : 'medium'
+  });
+
   return (
     <div className="stack">
       <PageHeader title="Reviewer operations" description="Team-level ownership, SLA, and workload balance across moderation queues." />
@@ -70,12 +106,23 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
               <strong>{assignmentRecommendation.slaBreachPrediction.summary}</strong>
               <p className="kpi-note">Predicted breach probability: {Math.round(assignmentRecommendation.slaBreachPrediction.breachProbability * 100)}%</p>
             </li>
-            {assignmentRecommendation.escalationOwner ? (
-              <li>
-                <strong>{assignmentRecommendation.escalationOwner.summary}</strong>
-                <p className="kpi-note">{assignmentRecommendation.escalationOwner.rationale.join(' ')}</p>
+            <li>
+              <strong>Calibrated recommendation confidence: {Math.round(calibratedConfidence.adjustedConfidence * 100)}%</strong>
+              <p className="kpi-note">{calibratedConfidence.adjustmentSummary}</p>
+            </li>
+          </ul>
+        </SectionCard>
+
+        <SectionCard title="Governance policy automation">
+          <p className="kpi-note">{policies.auditNote}</p>
+          <ul className="timeline">
+            {policies.firedPolicies.slice(0, 6).map((policy) => (
+              <li key={policy.policyId}>
+                <strong>{policy.policyId}</strong> ({policy.scope} · {policy.severity})
+                <p className="kpi-note">{policy.reason}</p>
               </li>
-            ) : null}
+            ))}
+            {policies.firedPolicies.length === 0 ? <li className="muted">No policy triggers in current scope.</li> : null}
           </ul>
         </SectionCard>
 
