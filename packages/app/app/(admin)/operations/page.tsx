@@ -1,5 +1,7 @@
 import { PageHeader, SectionCard, StatCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 import { recommendAssignmentActions } from '@/lib/admin/triage-recommendations';
 import { calibrateRecommendationConfidence, summarizeModelFeedback } from '@/lib/admin/model-feedback';
@@ -10,6 +12,10 @@ import { optimizeWorkload } from '@/lib/admin/workload-optimizer';
 export const dynamic = 'force-dynamic';
 
 export default async function OperationsPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const scopeContext = resolveScopeContext(searchParams);
   const now = new Date();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);

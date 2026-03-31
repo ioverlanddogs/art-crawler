@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
@@ -12,6 +14,10 @@ import { planAutonomousRollout } from '@/lib/admin/autonomous-rollout';
 export const dynamic = 'force-dynamic';
 
 export default async function PublishQueuePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const scopeContext = resolveScopeContext(searchParams);
   const [events, recentBatches, reviewers] = await Promise.all([
     prisma.event.findMany({

@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { PageHeader, SectionCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 import { scorePublishReadiness, simulateStagedRelease } from '@/lib/admin/publish-readiness';
 import { evaluateGovernancePolicies } from '@/lib/admin/governance-policy';
@@ -11,6 +13,10 @@ import { RollbackPreviewPanel } from './RollbackPreviewPanel';
 export const dynamic = 'force-dynamic';
 
 export default async function PublishDetailPage({ params }: { params: { eventId: string } }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const event = await prisma.event.findUnique({ where: { id: params.eventId } });
   if (!event) notFound();
 

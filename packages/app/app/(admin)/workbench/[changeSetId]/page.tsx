@@ -1,5 +1,7 @@
 import { notFound } from 'next/navigation';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { computeDiff } from '@/lib/intake/compute-diff';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 import { requireRole } from '@/lib/auth-guard';
@@ -8,6 +10,10 @@ import { WorkbenchClient } from './WorkbenchClient';
 export const dynamic = 'force-dynamic';
 
 export default async function WorkbenchPage({ params }: { params: { changeSetId: string } }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const session = await requireRole(['viewer', 'moderator', 'operator', 'admin']);
   const changeSet = await prisma.proposedChangeSet.findUnique({
     where: { id: params.changeSetId },

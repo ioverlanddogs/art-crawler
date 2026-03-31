@@ -14,9 +14,11 @@ import {
   StatCard,
   TrendSummaryCard
 } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { aggregatePipelineFailures } from '@/lib/admin/data-health';
 import { recommendSourceHealthActions } from '@/lib/admin/triage-recommendations';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -56,6 +58,10 @@ type RecoveryAuditEvent = {
 };
 
 export default async function PipelinePage() {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 

@@ -8,7 +8,9 @@ import {
   PageHeader,
   SectionCard
 } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -28,6 +30,10 @@ type TelemetryRow = Awaited<ReturnType<typeof prisma.pipelineTelemetry.findMany>
 type TimelineEvent = ReturnType<typeof buildTimeline>[number];
 
 export default async function InvestigationsPage({ searchParams }: { searchParams?: InvestigationParams }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const filters = {
     candidateId: sanitize(searchParams?.candidateId),
     importBatchId: sanitize(searchParams?.importBatchId),
