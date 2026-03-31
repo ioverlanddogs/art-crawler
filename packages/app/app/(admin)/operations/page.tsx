@@ -1,6 +1,7 @@
 import { PageHeader, SectionCard, StatCard } from '@/components/admin';
 import { prisma } from '@/lib/db';
 import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
+import { recommendAssignmentActions } from '@/lib/admin/triage-recommendations';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,18 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
   const avgResolutionMinutes = resolvedRows.length
     ? Math.round(resolvedRows.reduce((acc, row) => acc + ((row.reviewedAt?.getTime() ?? row.createdAt.getTime()) - row.createdAt.getTime()), 0) / Math.max(1, resolvedRows.length) / 60000)
     : 0;
+  const reviewerLoads = reviewers.map((reviewer) => ({
+    reviewerId: reviewer.id,
+    openCount: scopedOpenWork.find((row) => row.assignedReviewerId === reviewer.id)?._count._all ?? 0,
+    overdueCount: scopedOverdue.find((row) => row.assignedReviewerId === reviewer.id)?._count._all ?? 0,
+    escalationCount: scopedEscalations.find((row) => row.assignedReviewerId === reviewer.id)?._count._all ?? 0
+  }));
+  const assignmentRecommendation = recommendAssignmentActions(reviewerLoads, {
+    currentReviewerId: null,
+    ageHours: avgResolutionMinutes / 60,
+    slaTargetHours: 24,
+    escalationLevel: scopedEscalations.reduce((acc, row) => acc + row._count._all, 0) > 0 ? 1 : 0
+  });
 
   return (
     <div className="stack">
@@ -41,6 +54,31 @@ export default async function OperationsPage({ searchParams }: { searchParams?: 
       </div>
 
       <div className="two-col">
+        <SectionCard title="AI assignment recommendations" subtitle="Operator guidance only; assignment remains human-approved.">
+          <ul className="timeline">
+            <li>
+              <strong>{assignmentRecommendation.recommendBestReviewer.summary}</strong>
+              <p className="kpi-note">{assignmentRecommendation.recommendBestReviewer.rationale.join(' ')}</p>
+            </li>
+            {assignmentRecommendation.recommendReassignment ? (
+              <li>
+                <strong>{assignmentRecommendation.recommendReassignment.summary}</strong>
+                <p className="kpi-note">{assignmentRecommendation.recommendReassignment.rationale.join(' ')}</p>
+              </li>
+            ) : null}
+            <li>
+              <strong>{assignmentRecommendation.slaBreachPrediction.summary}</strong>
+              <p className="kpi-note">Predicted breach probability: {Math.round(assignmentRecommendation.slaBreachPrediction.breachProbability * 100)}%</p>
+            </li>
+            {assignmentRecommendation.escalationOwner ? (
+              <li>
+                <strong>{assignmentRecommendation.escalationOwner.summary}</strong>
+                <p className="kpi-note">{assignmentRecommendation.escalationOwner.rationale.join(' ')}</p>
+              </li>
+            ) : null}
+          </ul>
+        </SectionCard>
+
         <SectionCard title="Top blocker owners">
           <ul className="timeline">
             {scopedBlockers.sort((a, b) => b._count.assignedReviewerId - a._count.assignedReviewerId).slice(0, 8).map((row) => (

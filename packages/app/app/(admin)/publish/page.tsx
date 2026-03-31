@@ -5,6 +5,7 @@ import { prisma } from '@/lib/db';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 import { checkPublishReadiness } from '@/lib/intake/publish-gate';
 import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
+import { recommendAssignmentActions } from '@/lib/admin/triage-recommendations';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,18 @@ export default async function PublishQueuePage({ searchParams }: { searchParams?
     .filter((row) => !row.readiness.ready);
 
   const blockerClusters = groupByKey(blocked, (row) => row.readiness.blockers[0] ?? 'unknown blocker');
+  const reviewerLoads = reviewers.map((reviewer) => ({
+    reviewerId: reviewer.id,
+    openCount: blocked.filter((row) => row.event.assignedReviewerId === reviewer.id).length,
+    overdueCount: blocked.filter((row) => row.event.assignedReviewerId === reviewer.id && Date.now() - row.event.updatedAt.getTime() > 24 * 3600000).length,
+    escalationCount: blocked.filter((row) => row.event.assignedReviewerId === reviewer.id && (row.event.escalationLevel ?? 0) > 0).length
+  }));
+  const publishBlockerAssignmentRecommendation = recommendAssignmentActions(reviewerLoads, {
+    currentReviewerId: null,
+    ageHours: blocked.length ? blocked.reduce((acc, row) => acc + (Date.now() - row.event.updatedAt.getTime()) / 3600000, 0) / blocked.length : 0,
+    slaTargetHours: 24,
+    escalationLevel: blocked.some((row) => (row.event.escalationLevel ?? 0) > 0) ? 1 : 0
+  });
 
   return (
     <div className="stack">
@@ -132,6 +145,7 @@ export default async function PublishQueuePage({ searchParams }: { searchParams?
       </SectionCard>
 
       <SectionCard title="Publish blockers ownership" subtitle="Escalate and assign blockers before release windows slip.">
+        <p className="kpi-note">{publishBlockerAssignmentRecommendation.recommendBestReviewer.summary} · {publishBlockerAssignmentRecommendation.slaBreachPrediction.summary}</p>
         {blocked.length === 0 ? (
           <p className="muted">No publish blockers currently.</p>
         ) : (

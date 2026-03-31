@@ -15,6 +15,7 @@ import {
   TrendSummaryCard
 } from '@/components/admin';
 import { aggregatePipelineFailures } from '@/lib/admin/data-health';
+import { recommendSourceHealthActions } from '@/lib/admin/triage-recommendations';
 import { prisma } from '@/lib/db';
 import Link from 'next/link';
 
@@ -158,6 +159,13 @@ export default async function PipelinePage() {
 
   const replayingSignal = recoveryAuditEvents.find((event) => event.stage === 'recovery_replay_request');
   const blockedReplayReason = importEnabled === false ? 'Replay is blocked while imports are paused.' : drainMode ? 'Replay is blocked while drain mode is active.' : null;
+  const sourceHealthRecommendations = recommendSourceHealthActions({
+    failureRate: stageMetrics.length ? stageMetrics.reduce((acc, metric) => acc + metric.failureRate, 0) / stageMetrics.length : 0,
+    retryCount: stageMetrics.reduce((acc, metric) => acc + metric.retries, 0),
+    parserMismatchSpike: healthRollup.parserFailureSpike > 0,
+    unhealthySkips: healthRollup.unhealthySourceSkips,
+    queueDepth: Math.max(0, ...stageMetrics.map((metric) => metric.queueDepth ?? 0))
+  });
 
   const recoveryState = deriveRecoveryState({
     importEnabled,
@@ -216,6 +224,15 @@ export default async function PipelinePage() {
           <StatCard label="Queue congestion (stages > 40)" value={overdueQueueCount} />
           <StatCard label="Retry hotspots" value={stageMetrics.filter((stage) => stage.retries > 5).length} />
         </div>
+        <ul className="timeline">
+          {sourceHealthRecommendations.map((recommendation) => (
+            <li key={recommendation.action}>
+              <strong>{recommendation.summary}</strong>
+              <p className="kpi-note">{recommendation.rationale.join(' ')}</p>
+            </li>
+          ))}
+          {sourceHealthRecommendations.length === 0 ? <li className="muted">No recommendation signals in this window.</li> : null}
+        </ul>
       </SectionCard>
 
       <div className="pipeline-grid" role="region" aria-label="Pipeline stage cards">
