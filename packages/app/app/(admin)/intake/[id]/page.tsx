@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { EmptyState, IntakeJobStatusBadge, PageHeader, SectionCard, StatusBadge } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { IngestionJobStatus } from '@/lib/prisma-client';
 import { IntakeRetryAction } from '../IntakePageClient';
 
@@ -10,6 +12,10 @@ export const dynamic = 'force-dynamic';
 const STATUS_ORDER: IngestionJobStatus[] = ['queued', 'fetching', 'extracting', 'parsing', 'matching', 'needs_review', 'approved', 'publishing', 'published', 'failed'];
 
 export default async function IntakeJobDetailPage({ params }: { params: { id: string } }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const job = await prisma.ingestionJob.findUnique({
     where: { id: params.id },
     include: {

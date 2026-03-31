@@ -1,11 +1,17 @@
 import { DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { aggregateConfidenceDrift, aggregatePipelineFailures } from '@/lib/admin/data-health';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DataPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const days = Number(Array.isArray(searchParams?.window) ? searchParams?.window[0] : searchParams?.window ?? '7');
   const since = new Date(Date.now() - Math.max(1, days) * 24 * 60 * 60 * 1000);
 

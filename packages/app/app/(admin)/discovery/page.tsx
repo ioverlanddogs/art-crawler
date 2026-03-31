@@ -1,6 +1,10 @@
 import { DataTable, EmptyState, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { aggregatePipelineFailures } from '@/lib/admin/data-health';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
+
+export const dynamic = 'force-dynamic';
 
 type DiscoveryRow = {
   id: string;
@@ -11,6 +15,10 @@ type DiscoveryRow = {
 };
 
 export default async function DiscoveryPage() {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [recentCandidates, todaysCandidates, duplicateYieldBySource, pipelineRows] = await Promise.all([
     prisma.ingestExtractedEvent.findMany({

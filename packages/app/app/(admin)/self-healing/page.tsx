@@ -1,5 +1,7 @@
 import { AlertBanner, PageHeader, SectionCard, StatusBadge } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import Link from 'next/link';
 import { evaluateGovernancePolicies } from '@/lib/admin/governance-policy';
 
@@ -72,6 +74,10 @@ function parseEvent(id: string, detail: string | null, createdAt: Date): ParsedE
 }
 
 export default async function SelfHealingPage() {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const telemetry = await prisma.pipelineTelemetry.findMany({
     where: { stage: 'self_heal' },
     orderBy: { createdAt: 'desc' },

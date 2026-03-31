@@ -12,7 +12,9 @@ import {
   SlaBadge,
   TrendSummaryCard
 } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,6 +40,10 @@ type RecoveryState = 'paused' | 'replaying' | 'draining' | 'partially_recovered'
 const RECOVERY_STATES: RecoveryState[] = ['paused', 'replaying', 'draining', 'partially_recovered', 'recovered', 'blocked', 'unknown'];
 
 export default async function SystemPage() {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult] = await Promise.allSettled([
     prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } }),
     prisma.siteSetting.findUnique({ where: { key: 'pipeline_drain_mode' } }),

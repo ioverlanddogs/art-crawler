@@ -1,8 +1,10 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
 
@@ -16,6 +18,10 @@ export default async function DuplicateQueuePage({
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
   await requireRole(['viewer', 'moderator', 'operator', 'admin']);
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const scopeContext = resolveScopeContext(searchParams);
   const activeFilter = asString(searchParams?.filter);
   const where: Record<string, unknown> = { resolutionStatus: 'unresolved' };

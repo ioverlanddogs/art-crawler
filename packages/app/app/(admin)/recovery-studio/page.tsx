@@ -1,6 +1,8 @@
 import { AlertBanner, PageHeader, SectionCard, StatCard, StatusBadge } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { buildDryRunComparison } from '@/lib/admin/recovery-replay';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +23,10 @@ function toStatusBadge(status: string | null) {
 }
 
 export default async function RecoveryStudioPage({ searchParams }: { searchParams?: RecoveryParams }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const q = searchParams?.q?.trim();
   const target = searchParams?.target?.trim() || 'ingestion_job';
   const parserVersion = searchParams?.parserVersion?.trim() || 'latest-stable-parser';

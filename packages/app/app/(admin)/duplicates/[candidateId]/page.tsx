@@ -1,13 +1,19 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { PageHeader, SectionCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { recommendDuplicateOutcome } from '@/lib/admin/triage-recommendations';
 import { DuplicateDecisionPanel } from './DuplicateDecisionPanel';
 
 export const dynamic = 'force-dynamic';
 
 export default async function DuplicateComparePage({ params }: { params: { candidateId: string } }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const candidate = await prisma.duplicateCandidate.findUnique({
     where: { id: params.candidateId },
     include: {

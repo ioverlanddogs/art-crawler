@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { EmptyState, IntakeJobStatusBadge, PageHeader, SectionCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { IngestionJobStatus } from '@/lib/prisma-client';
 import { IntakePageClient } from './IntakePageClient';
 import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
@@ -15,6 +17,10 @@ function truncate(value: string, max = 60) {
 }
 
 export default async function IntakePage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const scopeContext = resolveScopeContext(searchParams);
   const statusParam = typeof searchParams?.status === 'string' ? searchParams.status : null;
   const status = statusParam && statusParam in IngestionJobStatus ? IngestionJobStatus[statusParam as keyof typeof IngestionJobStatus] : undefined;

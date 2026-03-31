@@ -1,5 +1,7 @@
 import { AlertBanner, PageHeader } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { ConfigClient } from './ConfigClient';
 
 export const dynamic = 'force-dynamic';
@@ -19,6 +21,10 @@ const AUDIT_STAGES = [
 ];
 
 export default async function ConfigPage() {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const [versionsResult, modelsResult, auditResult, automationResult] = await Promise.allSettled([
     prisma.pipelineConfigVersion.findMany({ orderBy: { version: 'desc' }, take: 30 }),
     prisma.modelVersion.findMany({ orderBy: { createdAt: 'desc' }, take: 30 }),

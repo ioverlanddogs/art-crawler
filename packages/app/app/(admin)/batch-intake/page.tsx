@@ -1,10 +1,16 @@
 import { PageHeader, SectionCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { BatchIntakeClient } from './BatchIntakeClient';
 
 export const dynamic = 'force-dynamic';
 
 export default async function BatchIntakePage() {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const recent = await prisma.sourceDocument.findMany({
     orderBy: { createdAt: 'desc' },
     take: 500,

@@ -17,6 +17,7 @@ import {
   TrendSummaryCard,
   WorkloadBalanceCard
 } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import {
   aggregateBlockerTrends,
   aggregateConfidenceDrift,
@@ -27,6 +28,7 @@ import {
 } from '@/lib/admin/data-health';
 import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { isAiExtractionEnabled } from '@/lib/env';
 import { Prisma } from '@/lib/prisma-client';
 import Link from 'next/link';
@@ -44,6 +46,10 @@ type AlertItem = {
 const SEVERITY_ORDER: Record<AlertItem['severity'], number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 export default async function DashboardPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const scopeContext = resolveScopeContext(searchParams);
   const since24h = inLast24Hours();
   const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);

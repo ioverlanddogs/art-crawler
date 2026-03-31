@@ -1,5 +1,7 @@
 import { PageHeader } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { ModerationClient } from './ModerationClient';
 
 export const dynamic = 'force-dynamic';
@@ -9,6 +11,10 @@ export default async function ModerationPage({
 }: {
   searchParams?: Record<string, string | string[] | undefined>;
 }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const queue = (Array.isArray(searchParams?.queue) ? searchParams?.queue[0] : searchParams?.queue) ?? 'mining';
   const [items, failures, intakeJobs] = await Promise.all([
     prisma.ingestExtractedEvent.findMany({

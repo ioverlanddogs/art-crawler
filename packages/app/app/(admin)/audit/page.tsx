@@ -1,15 +1,21 @@
 import { PageHeader } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { AuditLogTable, type AuditLogItem } from '@/components/admin/AuditLogTable';
 import { requireRole } from '@/lib/auth-guard';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { filterByScope, resolveScopeContext } from '@/lib/admin/scope';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AuditPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  const session = await requireRole(['viewer', 'moderator', 'operator', 'admin']);
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const entityId = asString(searchParams?.entityId);
   const entityType = asString(searchParams?.entityType);
-  const session = await requireRole(['viewer', 'moderator', 'operator', 'admin']);
   const scopeContext = resolveScopeContext(searchParams, session.user.id);
   const page = Math.max(1, Number.parseInt(asString(searchParams?.page) ?? '1', 10) || 1);
   const pageSize = 50;

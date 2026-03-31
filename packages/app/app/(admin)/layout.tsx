@@ -1,8 +1,12 @@
 import type { ReactNode } from 'react';
 import { AdminShell, type AdminEnvironment, type AdminNavGroup } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { redirect } from 'next/navigation';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { requireAdminSession } from '@/lib/auth-guard';
+
+export const dynamic = 'force-dynamic';
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   let session;
@@ -13,6 +17,10 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       redirect('/login');
     }
     redirect('/');
+  }
+
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
   }
 
   const [pendingCount, failureCount24h] = await Promise.all([

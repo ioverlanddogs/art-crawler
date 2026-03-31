@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { EmptyState, PageHeader, SectionCard } from '@/components/admin';
+import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { AssignmentControls } from '@/components/admin/AssignmentControls';
 import { prisma } from '@/lib/db';
+import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { groupByKey } from '@/lib/admin/batch-workflows';
 import { filterByScope, resolveScopeContext, withScopeQuery } from '@/lib/admin/scope';
 import { recommendReviewActions } from '@/lib/admin/triage-recommendations';
@@ -11,6 +13,10 @@ export const dynamic = 'force-dynamic';
 const FILTERS = ['duplicate-blocked', 'publish-blocked', 'low-confidence', 'stale'] as const;
 
 export default async function BatchReviewPage({ searchParams }: { searchParams?: Record<string, string | string[] | undefined> }) {
+  if (!isDatabaseRuntimeReady()) {
+    return <AdminSetupRequired />;
+  }
+
   const scopeContext = resolveScopeContext(searchParams);
   const activeFilter = asString(searchParams?.filter);
   const [rows, reviewers] = await Promise.all([
