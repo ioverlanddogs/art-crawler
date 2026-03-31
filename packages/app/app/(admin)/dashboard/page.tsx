@@ -90,7 +90,7 @@ export default async function DashboardPage() {
 
   const alerts: AlertItem[] = [];
   if (!activeConfig) alerts.push({ id: 'cfg', severity: 'critical', title: 'No active config version', detail: 'Activate a config to avoid inconsistent stage behavior.', href: '/config' });
-  if (!activeModel) alerts.push({ id: 'model', severity: 'high', title: 'No active model version', detail: 'Scoring may be running fallback logic.', href: '/config?tab=model' });
+  if (!activeModel) alerts.push({ id: 'model', severity: 'high', title: 'No active model version', detail: 'Scoring may be running fallback logic.', href: '/config#model-versions' });
   if (failure24h > 0)
     alerts.push({
       id: 'failure',
@@ -155,7 +155,7 @@ export default async function DashboardPage() {
           value={activeModel ? activeModel.version : 'Missing'}
           state={activeModel ? 'healthy' : 'degraded'}
           detail={activeModel ? `${activeModel.entityType} · ${activeModel.name}` : 'No ACTIVE model version'}
-          href="/config?tab=model"
+          href="/config#model-versions"
           ctaLabel="Open model versions"
         />
         <MetricCard

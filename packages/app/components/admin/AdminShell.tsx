@@ -1,12 +1,11 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AccountMenu } from './AccountMenu';
 import { ScopeBadge } from './ScopeBadge';
-import { TenantScopeSelector } from './TenantScopeSelector';
 import type { AdminEnvironment, AdminNavGroup, AdminUserInfo } from './types';
 
 function pageTitleFromPath(pathname: string, navGroups: AdminNavGroup[]): string {
@@ -25,27 +24,6 @@ function roleLabel(role?: string | null) {
   if (role === 'viewer') return 'Viewer';
   return 'Unscoped';
 }
-
-const DEFAULT_SCOPE_OPTIONS = [
-  {
-    id: 'global-ops',
-    label: 'Global Operations',
-    level: 'global' as const,
-    description: 'Global view across all tenants and teams. Use with caution for scope-sensitive actions.'
-  },
-  {
-    id: 'tenant-north-america',
-    label: 'Tenant: North America',
-    level: 'tenant' as const,
-    description: 'Tenant-level operations scope for North America workspace.'
-  },
-  {
-    id: 'team-moderation-a',
-    label: 'Team: Moderation Team A',
-    level: 'team' as const,
-    description: 'Team-level queue and assignment scope for Moderation Team A.'
-  }
-];
 
 export function AdminShell({
   navGroups,
@@ -68,8 +46,9 @@ export function AdminShell({
     }))
     .filter((group) => group.items.length > 0);
   const pageTitle = pageTitleFromPath(pathname, scopedNavGroups);
-  const [activeScope, setActiveScope] = useState(DEFAULT_SCOPE_OPTIONS[0].id);
-  const activeScopeMeta = useMemo(() => DEFAULT_SCOPE_OPTIONS.find((option) => option.id === activeScope) ?? DEFAULT_SCOPE_OPTIONS[0], [activeScope]);
+  const visibleHrefs = useMemo(() => new Set(scopedNavGroups.flatMap((group) => group.items.map((item) => item.href))), [scopedNavGroups]);
+  const canOpenModeration = visibleHrefs.has('/moderation');
+  const canInvestigate = visibleHrefs.has('/investigations');
 
   const envLabel =
     environment === 'production'
@@ -87,10 +66,12 @@ export function AdminShell({
       <aside className="admin-sidebar">
         <div className="brand">Artio Admin</div>
         <div className="role-chip">{roleLabel(user?.role)}</div>
-        <TenantScopeSelector options={DEFAULT_SCOPE_OPTIONS} selected={activeScope} onChange={setActiveScope} />
-        <p className="kpi-note">
-          Current scope: <strong>{activeScopeMeta.label}</strong>
-        </p>
+        <div className="tenant-selector" role="note" aria-label="Scope status">
+          <p className="muted tenant-selector-label">Workspace scope</p>
+          <p className="kpi-note">
+            Scope switching is unavailable in this release candidate. All actions currently run at the route-defined scope.
+          </p>
+        </div>
         {scopedNavGroups.map((group) => (
           <div key={group.label} className="nav-group">
             <p className="nav-group-label">{group.label}</p>
@@ -118,18 +99,22 @@ export function AdminShell({
               {typeof opsSignals?.failureCount24h === 'number' ? opsSignals.failureCount24h : 'N/A'}
             </p>
             <div className="filters-row">
-              <ScopeBadge scope={activeScopeMeta.level} />
-              <p className="kpi-note">Scope-safe mode: actions in this console should be interpreted as {activeScopeMeta.level}-scoped unless explicitly labeled global.</p>
+              <ScopeBadge scope="global" />
+              <p className="kpi-note">Scope selection is intentionally disabled until full route/data scoping is shipped.</p>
             </div>
           </div>
           <div className="topbar-actions">
             <p className={`env-badge tone-${envTone}`}>Environment: {envLabel}</p>
-            <Link href="/moderation" className="action-button variant-secondary">
-              Open Queue
-            </Link>
-            <Link href="/investigations" className="action-button variant-secondary">
-              Investigate
-            </Link>
+            {canOpenModeration ? (
+              <Link href="/moderation" className="action-button variant-secondary">
+                Open Queue
+              </Link>
+            ) : null}
+            {canInvestigate ? (
+              <Link href="/investigations" className="action-button variant-secondary">
+                Investigate
+              </Link>
+            ) : null}
             <AccountMenu name={user?.name} email={user?.email} role={user?.role} />
           </div>
         </header>

@@ -134,6 +134,32 @@ describe('post-hotfix regressions (app)', () => {
     expect(text).not.toMatch(/\/api\/admin\/moderation\/(?!events)/);
   });
 
+  test('dashboard model CTAs point to the real model versions anchor', async () => {
+    const fs = await import('node:fs/promises');
+    const dashboard = await fs.readFile(new URL('../app/(admin)/dashboard/page.tsx', import.meta.url), 'utf8');
+    const configClient = await fs.readFile(new URL('../app/(admin)/config/ConfigClient.tsx', import.meta.url), 'utf8');
+    expect(dashboard).toContain('/config#model-versions');
+    expect(dashboard).not.toContain('/config?tab=model');
+    expect(configClient).toContain('id="model-versions"');
+  });
+
+  test('moderation slash shortcut respects editable fields', async () => {
+    const fs = await import('node:fs/promises');
+    const text = await fs.readFile(new URL('../app/(admin)/moderation/ModerationClient.tsx', import.meta.url), 'utf8');
+    expect(text).toContain('function isEditableTarget');
+    expect(text).toContain('if (event.key === \'/\')');
+    expect(text).toContain('if (inTypingField) return;');
+  });
+
+  test('admin topbar actions are hidden when role cannot access those routes', async () => {
+    const fs = await import('node:fs/promises');
+    const text = await fs.readFile(new URL('../components/admin/AdminShell.tsx', import.meta.url), 'utf8');
+    expect(text).toContain('const canOpenModeration = visibleHrefs.has(\'/moderation\')');
+    expect(text).toContain('const canInvestigate = visibleHrefs.has(\'/investigations\')');
+    expect(text).toContain('{canOpenModeration ? (');
+    expect(text).toContain('{canInvestigate ? (');
+  });
+
   test('no isActive assumption for PipelineConfigVersion activation', async () => {
     const fs = await import('node:fs/promises');
     const text = await fs.readFile(new URL('../app/api/admin/config/activate/route.ts', import.meta.url), 'utf8');
