@@ -10,7 +10,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - run: cp .env.example .env
+      - name: Export workspace env
+        run: |
+          awk '
+            /^[[:space:]]*#/ { next }
+            /^[[:space:]]*$/ { next }
+            /^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*=.*/ {
+              sub(/^[[:space:]]*/, "", $0)
+              print
+              next
+            }
+            {
+              printf "Invalid .env line for GITHUB_ENV export: %s\n", $0 > "/dev/stderr"
+              exit 1
+            }
+          ' .env >> "$GITHUB_ENV"
       - run: npm install
+      - run: npm run prisma:generate
       - run: npm run lint
       - run: npm run typecheck
       - run: npm run test
@@ -38,13 +55,7 @@ jobs:
               exit 1
             }
           ' .env >> "$GITHUB_ENV"
-      - run: docker compose up -d
-      - run: npm install
-      - run: npm run prisma:generate -w @artio/app
-      - run: npm run prisma:generate -w @artio/mining
-      - run: npm run prisma:push -w @artio/app
-      - run: npm run prisma:push -w @artio/mining
-      - run: npm run seed:demo
+      - run: npm run setup:local
       - run: npm run build
       - run: npm run test
       - run: npm run lint
