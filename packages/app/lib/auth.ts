@@ -18,6 +18,22 @@ function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Identity/auth policy (Phase 1: Google-first admin access)
+ *
+ * Primary path:
+ * - Admins authenticate with Google OAuth.
+ * - Google sign-in is allowed only when the email maps to an existing ACTIVE AdminUser.
+ * - Unknown users and non-ACTIVE users fail closed.
+ * - Optional bootstrap: GOOGLE_APPROVED_EMAIL may auto-provision/activate one initial admin.
+ *
+ * Transitional path:
+ * - Credentials remains available as a break-glass mechanism for now.
+ * - It is intentionally DB-backed and still requires ACTIVE AdminUser + valid password hash.
+ *
+ * Authorization path:
+ * - Protected routes/API authorization remains DB-backed via requireRole(), not token-only trust.
+ */
 export const authOptions: NextAuthOptions = {
   adapter: databaseReady ? createAdminPrismaAdapter() : undefined,
   session: { strategy: 'jwt', maxAge: 60 * 60 * 8 },
@@ -88,6 +104,8 @@ export const authOptions: NextAuthOptions = {
       // Credentials: authorize() has already verified everything
       if (account?.provider === 'credentials') return true;
 
+      // Google-first policy: block all non-credentials providers except Google.
+      if (account?.provider !== 'google') return false;
       if (!databaseReady || !nextAuthSecretReady || !user.email) return false;
 
       const email = normaliseEmail(user.email);
@@ -111,7 +129,7 @@ export const authOptions: NextAuthOptions = {
         return true;
       }
 
-      // Existing invite flow: email must match a pre-existing ACTIVE AdminUser row
+      // Invite/DB-backed flow: email must match a pre-existing ACTIVE AdminUser row.
       const adminUser = await prisma.adminUser.findFirst({
         where: { email: { equals: email, mode: 'insensitive' } },
         select: { id: true, status: true }

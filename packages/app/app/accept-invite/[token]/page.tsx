@@ -29,8 +29,8 @@ export default async function AcceptInvite({ params, searchParams }: AcceptInvit
     return (
       <main style={{ maxWidth: 480, margin: '80px auto', padding: 20 }}>
         <h1>Account activated</h1>
-        <p>Your account is ready. Sign in with the Google account associated with your invite.</p>
-        <a href="/login">Go to sign in</a>
+        <p>Your admin access is now active. Next, sign in with the same Google email that received this invite.</p>
+        <a href="/login">Continue to Google sign-in</a>
       </main>
     );
   }
@@ -52,7 +52,7 @@ export default async function AcceptInvite({ params, searchParams }: AcceptInvit
       <h1>Accept invite</h1>
       <p>
         You have been invited to join Pipeline Admin as <strong>{invite.user.name ?? invite.user.email}</strong>.
-        Click the button below to activate your account, then sign in with your Google account.
+        Activating this invite prepares your admin access. After activation, sign in with the same Google email as this invite.
       </p>
       {errorCode ? (
         <p role="alert" style={{ color: '#b91c1c' }}>

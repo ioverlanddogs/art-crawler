@@ -69,7 +69,9 @@ export default function LoginClient() {
   return (
     <main style={{ maxWidth: 420, margin: '80px auto', padding: 20, textAlign: 'center' }}>
       <h1>Pipeline Admin</h1>
-      <p style={{ color: '#6b7280', marginBottom: 24 }}>Sign in with your admin credentials to continue.</p>
+      <p style={{ color: '#6b7280', marginBottom: 24 }}>
+        Sign in with your invited Google admin account. Credentials sign-in is temporary break-glass access.
+      </p>
       {errorMessage ? (
         <p role="alert" style={{ color: '#b91c1c', marginBottom: 16 }}>
           {errorMessage}
