@@ -88,7 +88,7 @@ export const authOptions: NextAuthOptions = {
       // Credentials: authorize() has already verified everything
       if (account?.provider === 'credentials') return true;
 
-      if (!databaseReady || !googleProviderReady || !nextAuthSecretReady || !user.email) return false;
+      if (!databaseReady || !nextAuthSecretReady || !user.email) return false;
 
       const email = normaliseEmail(user.email);
 
