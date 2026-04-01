@@ -31,7 +31,7 @@ async function main() {
       where: { email },
       create: {
         email,
-        name: 'System Admin',
+        name: process.env.BOOTSTRAP_ADMIN_NAME ?? 'System Admin',
         role: 'admin',
         status: 'ACTIVE',
         ...(password ? { passwordHash: await hashPassword(password) } : {})
