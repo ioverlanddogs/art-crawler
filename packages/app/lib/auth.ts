@@ -9,6 +9,7 @@ const databaseReady = isDatabaseRuntimeReady();
 const googleClientId = getGoogleClientId();
 const googleClientSecret = getGoogleClientSecret();
 const googleProviderReady = Boolean(googleClientId && googleClientSecret);
+const nextAuthSecretReady = typeof process.env.NEXTAUTH_SECRET === 'string' && process.env.NEXTAUTH_SECRET.trim().length > 0;
 
 function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -16,7 +17,8 @@ function normaliseEmail(email: string): string {
 
 export const authOptions: NextAuthOptions = {
   adapter: databaseReady ? createAdminPrismaAdapter() : undefined,
-  session: { strategy: 'jwt' },
+  session: { strategy: 'jwt', maxAge: 60 * 60 * 8 },
+  jwt: { maxAge: 60 * 5 },
   pages: { signIn: '/login' },
   providers: googleProviderReady
     ? [
@@ -28,7 +30,7 @@ export const authOptions: NextAuthOptions = {
     : [],
   callbacks: {
     async signIn({ user }) {
-      if (!databaseReady || !googleProviderReady || !user.email) return false;
+      if (!databaseReady || !googleProviderReady || !nextAuthSecretReady || !user.email) return false;
 
       const email = normaliseEmail(user.email);
       const adminUser = await prisma.adminUser.findFirst({
@@ -68,6 +70,8 @@ export const authOptions: NextAuthOptions = {
       });
 
       if (!adminUser) {
+        token.role = 'viewer';
+        token.status = 'SUSPENDED';
         return token;
       }
 

@@ -38,12 +38,13 @@ describe('admin auth coverage', () => {
   test('middleware matcher uses negative-lookahead to protect all routes except public ones', async () => {
     const { config } = await import('@/middleware');
 
-    expect(config.matcher).toHaveLength(1);
+    expect(config.matcher).toHaveLength(2);
     const pattern = config.matcher[0];
     expect(pattern).toContain('login');
     expect(pattern).toContain('accept-invite');
-    expect(pattern).toContain('api');
+    expect(pattern).toContain('api/auth');
     expect(pattern).toContain('_next');
+    expect(config.matcher[1]).toBe('/api/admin/:path*');
   });
 
   test('admin layout redirects unauthenticated and unauthorized users', async () => {
