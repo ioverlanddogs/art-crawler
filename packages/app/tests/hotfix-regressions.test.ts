@@ -3,24 +3,26 @@ import { processImportBatch } from '@/lib/pipeline/import-service';
 import { POST as legacyApprovePost } from '@/app/api/admin/moderation/[id]/approve/route';
 import { POST as legacyRejectPost } from '@/app/api/admin/moderation/[id]/reject/route';
 
-const requireRoleMock = vi.fn();
-const prismaMock = {
-  pipelineConfigVersion: {
-    findUnique: vi.fn(),
-    updateMany: vi.fn(),
-    update: vi.fn()
-  },
-  pipelineTelemetry: {
-    create: vi.fn()
-  },
-  sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
-  ingestionJob: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
-  extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
-  proposedChangeSet: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
-  fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
-  publishBatch: { create: vi.fn(), findMany: vi.fn() },
-  $transaction: vi.fn()
-};
+const { requireRoleMock, prismaMock } = vi.hoisted(() => ({
+  requireRoleMock: vi.fn(),
+  prismaMock: {
+    pipelineConfigVersion: {
+      findUnique: vi.fn(),
+      updateMany: vi.fn(),
+      update: vi.fn()
+    },
+    pipelineTelemetry: {
+      create: vi.fn()
+    },
+    sourceDocument: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    ingestionJob: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    extractionRun: { create: vi.fn(), findUnique: vi.fn(), findMany: vi.fn() },
+    proposedChangeSet: { create: vi.fn(), findUnique: vi.fn(), update: vi.fn(), findMany: vi.fn() },
+    fieldReview: { create: vi.fn(), upsert: vi.fn(), findMany: vi.fn() },
+    publishBatch: { create: vi.fn(), findMany: vi.fn() },
+    $transaction: vi.fn()
+  }
+}));
 
 vi.mock('@/lib/auth-guard', () => ({
   requireRole: requireRoleMock
@@ -69,7 +71,15 @@ describe('post-hotfix regressions (app)', () => {
     vi.useRealTimers();
   });
 
-  test('legacy moderation routes stay hard-disabled', async () => {
+  test('legacy moderation routes require auth before returning gone', async () => {
+    requireRoleMock.mockRejectedValueOnce(new Response('Unauthorized', { status: 401 }));
+    await expect(legacyApprovePost()).rejects.toMatchObject({ status: 401 });
+
+    requireRoleMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+    await expect(legacyRejectPost()).rejects.toMatchObject({ status: 403 });
+
+    requireRoleMock.mockResolvedValueOnce({ user: { id: 'u1', email: 'ops@example.test' } });
+    requireRoleMock.mockResolvedValueOnce({ user: { id: 'u1', email: 'ops@example.test' } });
     const approveRes = await legacyApprovePost();
     const rejectRes = await legacyRejectPost();
 
