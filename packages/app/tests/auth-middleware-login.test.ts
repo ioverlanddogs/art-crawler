@@ -47,12 +47,23 @@ describe('auth middleware and login route consistency', () => {
     expect(config.matcher).toEqual(['/((?!login|accept-invite|api|_next/static|_next/image|favicon\\.ico).*)']);
   });
 
-  test('login page initiates Google sign-in with callbackUrl support and access denied message', async () => {
-    const source = await fs.readFile(new URL('../app/(auth)/login/page.tsx', import.meta.url), 'utf8');
+  test('login route uses Suspense page wrapper and delegates auth logic to LoginClient', async () => {
+    const pageSource = await fs.readFile(new URL('../app/(auth)/login/page.tsx', import.meta.url), 'utf8');
 
-    expect(source).toContain("signIn('google', { callbackUrl })");
-    expect(source).toContain("error === 'AccessDenied'");
-    expect(source).toContain('ACTIVE admin user');
-    expect(source).toContain("DEFAULT_CALLBACK_URL = '/dashboard'");
+    expect(pageSource).toContain("import { Suspense } from 'react'");
+    expect(pageSource).toContain("import LoginClient from './LoginClient'");
+    expect(pageSource).toContain('<Suspense fallback={<LoginFallback />}>');
+    expect(pageSource).toContain('<LoginClient />');
+  });
+
+  test('LoginClient supports Google sign-in, callbackUrl handling, and access denied messaging', async () => {
+    const loginClientSource = await fs.readFile(new URL('../app/(auth)/login/LoginClient.tsx', import.meta.url), 'utf8');
+
+    expect(loginClientSource).toContain("signIn('google', { callbackUrl })");
+    expect(loginClientSource).toContain("searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL");
+    expect(loginClientSource).toContain("DEFAULT_CALLBACK_URL = '/dashboard'");
+    expect(loginClientSource).toContain("error === 'AccessDenied'");
+    expect(loginClientSource).toContain('ACTIVE admin user');
+    expect(loginClientSource).toContain("searchParams.get('error')");
   });
 });
