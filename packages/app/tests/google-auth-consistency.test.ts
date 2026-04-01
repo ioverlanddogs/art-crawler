@@ -36,6 +36,7 @@ describe('google auth consistency', () => {
     vi.resetModules();
     vi.clearAllMocks();
     runtimeMock.mockReturnValue(true);
+    process.env.NEXTAUTH_SECRET = 'test-secret';
   });
 
   test('allows ACTIVE admin sign-in and updates lastLoginAt', async () => {
@@ -55,11 +56,41 @@ describe('google auth consistency', () => {
     expect(prismaMock.adminUser.update.mock.calls[0][0].data.lastLoginAt).toBeInstanceOf(Date);
   });
 
+  test('allows first-time invited admin OAuth sign-in without calling adapter createUser', async () => {
+    prismaMock.adminUser.findFirst.mockResolvedValueOnce({ id: 'admin-invited', status: 'ACTIVE' });
+    prismaMock.adminUser.update.mockResolvedValueOnce({ id: 'admin-invited' });
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { id: 'admin-invited', email: 'invited-admin@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(true);
+    expect(prismaMock.adminUser.findFirst).toHaveBeenCalledWith({
+      where: { email: { equals: 'invited-admin@example.com', mode: 'insensitive' } },
+      select: { id: true, status: true }
+    });
+  });
+
   test('denies sign-in when admin user does not exist', async () => {
     prismaMock.adminUser.findFirst.mockResolvedValueOnce(null);
 
     const { authOptions } = await import('@/lib/auth');
     const result = await authOptions.callbacks!.signIn!({ user: { email: 'nobody@example.com' } } as never);
+
+    expect(result).toBe(false);
+    expect(prismaMock.adminUser.update).not.toHaveBeenCalled();
+  });
+
+  test('rejects unknown OAuth user on first login attempt', async () => {
+    prismaMock.adminUser.findFirst.mockResolvedValueOnce(null);
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'unknown@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
 
     expect(result).toBe(false);
     expect(prismaMock.adminUser.update).not.toHaveBeenCalled();
@@ -104,6 +135,31 @@ describe('google auth consistency', () => {
     });
   });
 
+  test('marks token suspended when admin status changes after login', async () => {
+    prismaMock.adminUser.findFirst
+      .mockResolvedValueOnce({
+        id: 'admin-1',
+        email: 'admin@example.com',
+        name: 'Admin',
+        role: 'admin',
+        status: 'ACTIVE'
+      })
+      .mockResolvedValueOnce({
+        id: 'admin-1',
+        email: 'admin@example.com',
+        name: 'Admin',
+        role: 'admin',
+        status: 'SUSPENDED'
+      });
+
+    const { authOptions } = await import('@/lib/auth');
+    const activeToken = await authOptions.callbacks!.jwt!({ token: { sub: 'admin-1' }, user: undefined } as never);
+    expect(activeToken.status).toBe('ACTIVE');
+
+    const suspendedToken = await authOptions.callbacks!.jwt!({ token: activeToken, user: undefined } as never);
+    expect(suspendedToken.status).toBe('SUSPENDED');
+  });
+
   test('fails safely when database runtime is unavailable', async () => {
     runtimeMock.mockReturnValue(false);
 
@@ -112,7 +168,16 @@ describe('google auth consistency', () => {
 
     expect(result).toBe(false);
     expect(authOptions.adapter).toBeUndefined();
-    expect(authOptions.session).toEqual({ strategy: 'jwt' });
+    expect(authOptions.session).toEqual({ strategy: 'jwt', maxAge: 60 * 60 * 8 });
     expect(prismaMock.adminUser.findFirst).not.toHaveBeenCalled();
+  });
+
+  test('fails safely when NEXTAUTH_SECRET is missing', async () => {
+    delete process.env.NEXTAUTH_SECRET;
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({ user: { email: 'admin@example.com' } } as never);
+
+    expect(result).toBe(false);
   });
 });

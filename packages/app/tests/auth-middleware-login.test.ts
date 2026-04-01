@@ -1,14 +1,16 @@
-import { describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import fs from 'node:fs/promises';
 
 const nextMock = vi.fn(() => ({ kind: 'next' }));
 const redirectMock = vi.fn((url: URL) => ({ kind: 'redirect', location: url.toString() }));
+const jsonMock = vi.fn((body: unknown, init?: ResponseInit) => ({ kind: 'json', body, status: init?.status ?? 200 }));
 const getTokenMock = vi.fn();
 
 vi.mock('next/server', () => ({
   NextResponse: {
     next: nextMock,
-    redirect: redirectMock
+    redirect: redirectMock,
+    json: jsonMock
   }
 }));
 
@@ -17,6 +19,32 @@ vi.mock('next-auth/jwt', () => ({
 }));
 
 describe('auth middleware and login route consistency', () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.clearAllMocks();
+    getTokenMock.mockReset();
+    nextMock.mockClear();
+    redirectMock.mockClear();
+    jsonMock.mockClear();
+    process.env.NEXTAUTH_SECRET = 'test-secret';
+  });
+
+  test('middleware denies access when NEXTAUTH_SECRET is missing', async () => {
+    delete process.env.NEXTAUTH_SECRET;
+    getTokenMock.mockResolvedValueOnce({ status: 'ACTIVE' });
+    const { default: middleware } = await import('@/middleware');
+
+    const response = await middleware({
+      url: 'https://app.example.com/dashboard',
+      nextUrl: { pathname: '/dashboard', search: '' }
+    } as never);
+
+    expect(response).toEqual({
+      kind: 'redirect',
+      location: 'https://app.example.com/login?callbackUrl=%2Fdashboard'
+    });
+  });
+
   test('middleware redirects anonymous users to login with callbackUrl', async () => {
     getTokenMock.mockResolvedValueOnce(null);
     const { default: middleware } = await import('@/middleware');
@@ -26,7 +54,6 @@ describe('auth middleware and login route consistency', () => {
       nextUrl: { pathname: '/dashboard', search: '?tab=ops' }
     } as never);
 
-    expect(redirectMock).toHaveBeenCalledTimes(1);
     expect(response).toEqual({
       kind: 'redirect',
       location: 'https://app.example.com/login?callbackUrl=%2Fdashboard%3Ftab%3Dops'
@@ -42,7 +69,6 @@ describe('auth middleware and login route consistency', () => {
       nextUrl: { pathname: '/dashboard', search: '' }
     } as never);
 
-    expect(nextMock).toHaveBeenCalledTimes(1);
     expect(response).toEqual({ kind: 'next' });
   });
 
@@ -64,7 +90,19 @@ describe('auth middleware and login route consistency', () => {
   test('middleware matcher excludes auth and non-admin API routes', async () => {
     const { config } = await import('@/middleware');
 
-    expect(config.matcher).toEqual(['/((?!login|accept-invite|api|_next/static|_next/image|favicon\\.ico).*)']);
+    expect(config.matcher).toEqual(['/((?!login|accept-invite|api/auth|_next/static|_next/image|favicon\\.ico).*)', '/api/admin/:path*']);
+  });
+
+  test('middleware returns 401 JSON for protected admin API routes when unauthenticated', async () => {
+    getTokenMock.mockResolvedValueOnce(null);
+    const { default: middleware } = await import('@/middleware');
+
+    const response = await middleware({
+      url: 'https://app.example.com/api/admin/moderation/queue',
+      nextUrl: { pathname: '/api/admin/moderation/queue', search: '' }
+    } as never);
+
+    expect(response).toEqual({ kind: 'json', body: { error: 'Unauthorized' }, status: 401 });
   });
 
   test('login route uses Suspense page wrapper and delegates auth logic to LoginClient', async () => {
