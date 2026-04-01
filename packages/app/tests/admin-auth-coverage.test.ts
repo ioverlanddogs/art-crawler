@@ -35,18 +35,15 @@ describe('admin auth coverage', () => {
     vi.clearAllMocks();
   });
 
-  test('middleware matcher protects top-level admin routes and /api/admin', async () => {
+  test('middleware matcher uses negative-lookahead to protect all routes except public ones', async () => {
     const { config } = await import('@/middleware');
 
-    expect(config.matcher).toContain('/dashboard/:path*');
-    expect(config.matcher).toContain('/moderation/:path*');
-    expect(config.matcher).toContain('/pipeline/:path*');
-    expect(config.matcher).toContain('/data/:path*');
-    expect(config.matcher).toContain('/discovery/:path*');
-    expect(config.matcher).toContain('/config/:path*');
-    expect(config.matcher).toContain('/system/:path*');
-    expect(config.matcher).toContain('/investigations/:path*');
-    expect(config.matcher).toContain('/api/admin/:path*');
+    expect(config.matcher).toHaveLength(1);
+    const pattern = config.matcher[0];
+    expect(pattern).toContain('login');
+    expect(pattern).toContain('accept-invite');
+    expect(pattern).toContain('api/auth');
+    expect(pattern).toContain('_next');
   });
 
   test('admin layout redirects unauthenticated and unauthorized users', async () => {

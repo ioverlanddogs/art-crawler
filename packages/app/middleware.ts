@@ -14,14 +14,6 @@ export default withAuth({
 
 export const config = {
   matcher: [
-    '/dashboard/:path*',
-    '/moderation/:path*',
-    '/pipeline/:path*',
-    '/data/:path*',
-    '/discovery/:path*',
-    '/config/:path*',
-    '/system/:path*',
-    '/investigations/:path*',
-    '/api/admin/:path*'
+    '/((?!login|accept-invite|api/auth|_next/static|_next/image|favicon\\.ico).*)'
   ]
 };

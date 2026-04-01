@@ -18,7 +18,7 @@ export default function LoginPage() {
 
     const result = await signIn('credentials', { email, password, redirect: false });
     if (result?.ok) {
-      router.push('/admin/dashboard');
+      router.push('/dashboard');
       router.refresh();
       return;
     }

@@ -17,7 +17,7 @@ function readArg(flag: string): string | undefined {
 function getOptions(): CliOptions {
   return {
     email: readArg('--email') ?? process.env.BOOTSTRAP_ADMIN_EMAIL,
-    password: readArg('--password') ?? process.env.BOOTSTRAP_ADMIN_PASSWORD,
+    password: process.env.BOOTSTRAP_ADMIN_PASSWORD,
     name: readArg('--name') ?? process.env.BOOTSTRAP_ADMIN_NAME,
     dryRun: process.argv.includes('--dry-run')
   };
@@ -50,7 +50,7 @@ async function main() {
   }
 
   if (!options.password) {
-    throw new Error('Admin password is required. Pass --password or BOOTSTRAP_ADMIN_PASSWORD.');
+    throw new Error('Admin password is required. Set BOOTSTRAP_ADMIN_PASSWORD env var.');
   }
 
   validatePassword(options.password);
