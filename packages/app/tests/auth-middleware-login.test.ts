@@ -45,6 +45,19 @@ describe('auth middleware and login route consistency', () => {
     });
   });
 
+  test('middleware fails closed with 401 JSON for admin API requests when NEXTAUTH_SECRET is missing', async () => {
+    delete process.env.NEXTAUTH_SECRET;
+    getTokenMock.mockResolvedValueOnce({ status: 'ACTIVE' });
+    const { default: middleware } = await import('@/middleware');
+
+    const response = await middleware({
+      url: 'https://app.example.com/api/admin/moderation/queue',
+      nextUrl: { pathname: '/api/admin/moderation/queue', search: '' }
+    } as never);
+
+    expect(response).toEqual({ kind: 'json', body: { error: 'Unauthorized' }, status: 401 });
+  });
+
   test('middleware redirects anonymous users to login with callbackUrl', async () => {
     getTokenMock.mockResolvedValueOnce(null);
     const { default: middleware } = await import('@/middleware');
