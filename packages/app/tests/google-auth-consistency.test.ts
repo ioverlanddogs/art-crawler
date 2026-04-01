@@ -251,4 +251,46 @@ describe('google auth consistency', () => {
     expect(result).toBe(false);
   });
 
+  test('allows approved Google email sign-in even when Google client env vars are absent at module load', async () => {
+    // Simulate the cold-start race: Google credentials missing when module loads
+    // but OAuth completes anyway (the real-world bug scenario)
+    process.env.GOOGLE_APPROVED_EMAIL = 'approved@example.com';
+    prismaMock.adminUser.upsert.mockResolvedValueOnce({
+      id: 'admin-approved',
+      email: 'approved@example.com',
+      status: 'ACTIVE'
+    });
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'approved@example.com', name: 'Approved' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(true);
+    delete process.env.GOOGLE_APPROVED_EMAIL;
+  });
+
+  test('allows Google sign-in for existing ACTIVE AdminUser row when GOOGLE_APPROVED_EMAIL is not set', async () => {
+    delete process.env.GOOGLE_APPROVED_EMAIL;
+    prismaMock.adminUser.findFirst.mockResolvedValueOnce({ id: 'admin-db', status: 'ACTIVE' });
+    prismaMock.adminUser.update.mockResolvedValueOnce({ id: 'admin-db' });
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'dbuser@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(true);
+    expect(prismaMock.adminUser.findFirst).toHaveBeenCalledWith({
+      where: { email: { equals: 'dbuser@example.com', mode: 'insensitive' } },
+      select: { id: true, status: true }
+    });
+    expect(prismaMock.adminUser.update).toHaveBeenCalledWith({
+      where: { id: 'admin-db' },
+      data: { lastLoginAt: expect.any(Date) }
+    });
+  });
+
 });
