@@ -22,7 +22,7 @@ Optional admin bootstrap inputs:
 From repo root:
 
 ```bash
-npm install
+npm ci
 npm run prisma:generate -w @artio/app
 npm run bootstrap:prod-db -w @artio/app -- --admin-email "admin@example.com" --admin-password "<strong-password>" --admin-name "Initial Admin"
 ```
@@ -33,6 +33,12 @@ npm run bootstrap:prod-db -w @artio/app -- --admin-email "admin@example.com" --a
 2. Runs `prisma migrate status`.
 3. Runs `prisma migrate deploy` (production-safe migration path).
 4. Creates an initial `AdminUser` only if there is no existing ACTIVE `admin` user.
+
+## Monorepo install + lockfile expectations
+
+- This repository uses **npm workspaces** from the repo root (`package.json` at `/`).
+- Commit and maintain a **root `package-lock.json`** so CI can run reproducible installs.
+- DB GitHub workflows run dependency installation from the repo root with `npm ci`, then execute app Prisma commands via `-w @artio/app`.
 
 ## GitHub Actions workflows (production)
 
@@ -49,14 +55,14 @@ Use the GitHub **production environment** for DB workflows and add these environ
 - Workflow file: `.github/workflows/db-bootstrap.yml`
 - Trigger: manual (`workflow_dispatch`)
 - Use this for first-time production DB initialization (or any controlled rerun).
-- It installs dependencies, generates Prisma client, runs bootstrap (`prisma migrate deploy` + idempotent admin creation).
+- It installs workspace dependencies from repo root (`npm ci`), generates Prisma client for `@artio/app`, then runs bootstrap (`prisma migrate deploy` + idempotent admin creation).
 - Admin identity can come from workflow inputs or production environment secrets.
 
 ### 2) Ongoing migrations: `db-migrate`
 
 - Workflow file: `.github/workflows/db-migrate.yml`
 - Trigger: `push` to `main` when app Prisma schema/migrations-related files change.
-- It is intentionally narrow: installs dependencies, generates Prisma client, and runs `prisma migrate deploy` only.
+- It is intentionally narrow: installs workspace dependencies from repo root (`npm ci`), generates Prisma client, and runs `prisma migrate deploy` only.
 - It does **not** create or modify admin users.
 
 ### 3) Manual operator check: `db-status`
