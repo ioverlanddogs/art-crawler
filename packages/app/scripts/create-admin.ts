@@ -1,9 +1,7 @@
-import bcrypt from 'bcryptjs';
 import { PrismaClient } from '../generated/prisma/index.js';
 
 type CliOptions = {
   email?: string;
-  password?: string;
   name?: string;
   dryRun: boolean;
 };
@@ -17,7 +15,6 @@ function readArg(flag: string): string | undefined {
 function getOptions(): CliOptions {
   return {
     email: readArg('--email') ?? process.env.BOOTSTRAP_ADMIN_EMAIL,
-    password: process.env.BOOTSTRAP_ADMIN_PASSWORD,
     name: readArg('--name') ?? process.env.BOOTSTRAP_ADMIN_NAME,
     dryRun: process.argv.includes('--dry-run')
   };
@@ -34,26 +31,14 @@ function assertDatabaseEnv() {
   }
 }
 
-function validatePassword(password: string) {
-  if (password.length < 12) {
-    throw new Error('Admin password must be at least 12 characters.');
-  }
-}
-
 async function main() {
   const options = getOptions();
 
   assertDatabaseEnv();
 
   if (!options.email) {
-    throw new Error('Admin email is required. Pass --email or BOOTSTRAP_ADMIN_EMAIL.');
+    throw new Error('Admin email is required. Pass --email or BOOTSTRAP_ADMIN_EMAIL. The admin user signs in via Google OAuth using this email address.');
   }
-
-  if (!options.password) {
-    throw new Error('Admin password is required. Set BOOTSTRAP_ADMIN_PASSWORD env var.');
-  }
-
-  validatePassword(options.password);
 
   const prisma = new PrismaClient({ log: ['error'] });
 
@@ -85,22 +70,21 @@ async function main() {
 
     if (options.dryRun) {
       console.log('Dry run complete: no active admin exists and a new admin would be created.');
+      console.log('The admin user signs in via Google OAuth using this email address.');
       return;
     }
-
-    const passwordHash = await bcrypt.hash(options.password, 12);
 
     await prisma.adminUser.create({
       data: {
         email: options.email,
         name: options.name,
-        passwordHash,
         role: 'admin',
         status: 'ACTIVE'
       }
     });
 
     console.log(`Created initial admin user: ${options.email}`);
+    console.log('The admin user signs in via Google OAuth using this email address.');
   } finally {
     await prisma.$disconnect();
   }

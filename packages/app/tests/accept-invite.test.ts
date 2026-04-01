@@ -10,7 +10,7 @@ function createDeps(inviteOverride?: Partial<any>) {
     userId: 'user-1',
     usedAt: null,
     expiresAt: new Date('2026-04-30T00:00:00.000Z'),
-    user: { name: 'Invited User' },
+    user: { name: 'Invited User', email: 'invited@example.com' },
     ...inviteOverride
   };
 
@@ -33,7 +33,6 @@ function createDeps(inviteOverride?: Partial<any>) {
     prisma: prisma as any,
     adminInvite,
     adminUser,
-    hashPassword: vi.fn().mockResolvedValue('hashed-password'),
     now: () => new Date('2026-03-30T12:00:00.000Z')
   };
 }
@@ -48,22 +47,13 @@ describe('accept invite domain service', () => {
     const deps = createDeps();
     const { acceptInvite, hashInviteToken } = await import('@/lib/invites/accept-invite');
 
-    const result = await acceptInvite(
-      {
-        token: 'raw-token',
-        name: 'New Name',
-        password: 'supersafepassword',
-        confirmPassword: 'supersafepassword'
-      },
-      deps
-    );
+    const result = await acceptInvite({ token: 'raw-token' }, deps);
 
-    expect(result).toEqual({ ok: true });
+    expect(result).toEqual({ ok: true, email: expect.any(String) });
     expect(deps.adminInvite.findUnique).toHaveBeenCalledWith({
       where: { tokenHash: hashInviteToken('raw-token') },
       include: { user: true }
     });
-    expect(deps.hashPassword).toHaveBeenCalledWith('supersafepassword');
     expect(deps.prisma.$transaction).toHaveBeenCalledTimes(1);
     expect(deps.adminUser.update).toHaveBeenCalled();
     expect(deps.adminInvite.update).toHaveBeenCalled();
@@ -74,15 +64,7 @@ describe('accept invite domain service', () => {
     deps.adminInvite.findUnique.mockResolvedValue(null);
     const { acceptInvite } = await import('@/lib/invites/accept-invite');
 
-    const result = await acceptInvite(
-      {
-        token: 'missing',
-        name: 'Name',
-        password: 'supersafepassword',
-        confirmPassword: 'supersafepassword'
-      },
-      deps
-    );
+    const result = await acceptInvite({ token: 'missing' }, deps);
 
     expect(result).toEqual({ ok: false, code: 'INVALID_INVITE', message: 'Invite invalid or expired' });
   });
@@ -91,27 +73,11 @@ describe('accept invite domain service', () => {
     const { acceptInvite } = await import('@/lib/invites/accept-invite');
 
     const expiredDeps = createDeps({ expiresAt: new Date('2026-03-01T00:00:00.000Z') });
-    const expired = await acceptInvite(
-      {
-        token: 'expired',
-        name: 'Name',
-        password: 'supersafepassword',
-        confirmPassword: 'supersafepassword'
-      },
-      expiredDeps
-    );
+    const expired = await acceptInvite({ token: 'expired' }, expiredDeps);
     expect(expired).toEqual({ ok: false, code: 'INVALID_INVITE', message: 'Invite invalid or expired' });
 
     const reusedDeps = createDeps({ usedAt: new Date('2026-03-10T00:00:00.000Z') });
-    const reused = await acceptInvite(
-      {
-        token: 'reused',
-        name: 'Name',
-        password: 'supersafepassword',
-        confirmPassword: 'supersafepassword'
-      },
-      reusedDeps
-    );
+    const reused = await acceptInvite({ token: 'reused' }, reusedDeps);
     expect(reused).toEqual({ ok: false, code: 'INVALID_INVITE', message: 'Invite invalid or expired' });
   });
 
@@ -120,15 +86,7 @@ describe('accept invite domain service', () => {
     deps.prisma.$transaction.mockRejectedValue(new Error('db unavailable'));
     const { acceptInvite } = await import('@/lib/invites/accept-invite');
 
-    const result = await acceptInvite(
-      {
-        token: 'raw-token',
-        name: 'Name',
-        password: 'supersafepassword',
-        confirmPassword: 'supersafepassword'
-      },
-      deps
-    );
+    const result = await acceptInvite({ token: 'raw-token' }, deps);
 
     expect(result).toEqual({ ok: false, code: 'INTERNAL_ERROR', message: 'Unable to accept invite right now' });
   });

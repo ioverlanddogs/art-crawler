@@ -27,3 +27,11 @@ export function getAnthropicApiKey(): string | undefined {
 export function isAiExtractionEnabled(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
+
+export function getGoogleClientId(): string | undefined {
+  return process.env.GOOGLE_CLIENT_ID;
+}
+
+export function getGoogleClientSecret(): string | undefined {
+  return process.env.GOOGLE_CLIENT_SECRET;
+}

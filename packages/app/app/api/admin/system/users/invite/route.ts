@@ -50,5 +50,8 @@ export async function POST(req: Request) {
   const inviteUrl = `${getAppBaseUrl()}/accept-invite/${rawToken}`;
   console.log(`Invite URL for ${parsed.data.email}: ${inviteUrl}`);
 
-  return ok({ inviteUrl });
+  return ok({
+    inviteUrl,
+    instructions: 'Send this URL to the invitee. They must activate using their Google account email.'
+  });
 }

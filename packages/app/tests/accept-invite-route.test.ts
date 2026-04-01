@@ -19,7 +19,7 @@ describe('POST /api/auth/accept-invite', () => {
     const res = await POST(new Request('http://localhost/api/auth/accept-invite', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token: 't', name: 'N', password: '123456789012', confirmPassword: '123456789012' })
+      body: JSON.stringify({ token: 't' })
     }));
 
     expect(res.status).toBe(200);
@@ -45,7 +45,7 @@ describe('POST /api/auth/accept-invite', () => {
     let res = await POST(new Request('http://localhost/api/auth/accept-invite', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token: 'bad', name: 'N', password: '123456789012', confirmPassword: '123456789012' })
+      body: JSON.stringify({ token: 'bad' })
     }));
     expect(res.status).toBe(400);
 
@@ -53,7 +53,7 @@ describe('POST /api/auth/accept-invite', () => {
     res = await POST(new Request('http://localhost/api/auth/accept-invite', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token: 'bad', name: 'N', password: '123456789012', confirmPassword: '123456789012' })
+      body: JSON.stringify({ token: 'bad' })
     }));
     expect(res.status).toBe(500);
   });

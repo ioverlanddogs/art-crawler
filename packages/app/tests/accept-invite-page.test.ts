@@ -12,7 +12,9 @@ vi.mock('@/lib/invites/accept-invite', () => inviteLibMock);
 describe('accept invite page UI states', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    inviteLibMock.findPendingInviteByToken.mockResolvedValue({ user: { name: 'Mock User' } });
+    inviteLibMock.findPendingInviteByToken.mockResolvedValue({
+      user: { name: 'Mock User', email: 'mock@example.com' }
+    });
     inviteLibMock.mapAcceptInviteErrorToUiMessage.mockReturnValue('Readable error for user');
   });
 
@@ -37,6 +39,7 @@ describe('accept invite page UI states', () => {
 
     const html = renderToStaticMarkup(element as any);
     expect(html).toContain('Account activated');
+    expect(html).toContain('Sign in with the Google account');
     expect(html).toContain('/login');
   });
 });
