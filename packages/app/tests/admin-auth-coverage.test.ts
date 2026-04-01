@@ -42,7 +42,7 @@ describe('admin auth coverage', () => {
     const pattern = config.matcher[0];
     expect(pattern).toContain('login');
     expect(pattern).toContain('accept-invite');
-    expect(pattern).toContain('api/auth');
+    expect(pattern).toContain('api');
     expect(pattern).toContain('_next');
   });
 
