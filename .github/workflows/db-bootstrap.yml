@@ -1,0 +1,93 @@
+name: db-bootstrap
+
+on:
+  workflow_dispatch:
+    inputs:
+      admin_email:
+        description: 'Optional initial admin email (falls back to BOOTSTRAP_ADMIN_EMAIL secret)'
+        required: false
+        type: string
+      admin_name:
+        description: 'Optional initial admin display name (falls back to BOOTSTRAP_ADMIN_NAME secret)'
+        required: false
+        type: string
+      admin_password:
+        description: 'Optional initial admin password (falls back to BOOTSTRAP_ADMIN_PASSWORD secret)'
+        required: false
+        type: string
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: packages/app
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
+      BOOTSTRAP_ADMIN_EMAIL_SECRET: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL }}
+      BOOTSTRAP_ADMIN_PASSWORD_SECRET: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+      BOOTSTRAP_ADMIN_NAME_SECRET: ${{ secrets.BOOTSTRAP_ADMIN_NAME }}
+      INPUT_ADMIN_EMAIL: ${{ inputs.admin_email }}
+      INPUT_ADMIN_PASSWORD: ${{ inputs.admin_password }}
+      INPUT_ADMIN_NAME: ${{ inputs.admin_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Validate required production DB secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+
+          [[ -n "${DATABASE_URL:-}" ]] || missing+=("DATABASE_URL")
+          [[ -n "${DATABASE_URL_DIRECT:-}" ]] || missing+=("DATABASE_URL_DIRECT")
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required production environment secret(s): ${missing[*]}" >&2
+            echo "Add missing secrets to the GitHub 'production' environment before re-running." >&2
+            exit 1
+          fi
+
+      - name: Resolve bootstrap admin inputs/secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          admin_email="${INPUT_ADMIN_EMAIL:-${BOOTSTRAP_ADMIN_EMAIL_SECRET:-}}"
+          admin_password="${INPUT_ADMIN_PASSWORD:-${BOOTSTRAP_ADMIN_PASSWORD_SECRET:-}}"
+          admin_name="${INPUT_ADMIN_NAME:-${BOOTSTRAP_ADMIN_NAME_SECRET:-}}"
+
+          if [[ -z "${admin_email}" || -z "${admin_password}" ]]; then
+            echo "Missing bootstrap admin identity. Provide admin_email/admin_password inputs or BOOTSTRAP_ADMIN_EMAIL/BOOTSTRAP_ADMIN_PASSWORD production secrets." >&2
+            exit 1
+          fi
+
+          echo "::add-mask::${admin_email}"
+          echo "::add-mask::${admin_password}"
+          if [[ -n "${admin_name}" ]]; then
+            echo "::add-mask::${admin_name}"
+          fi
+
+          {
+            echo "BOOTSTRAP_ADMIN_EMAIL=${admin_email}"
+            echo "BOOTSTRAP_ADMIN_PASSWORD=${admin_password}"
+            if [[ -n "${admin_name}" ]]; then
+              echo "BOOTSTRAP_ADMIN_NAME=${admin_name}"
+            fi
+          } >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client for app
+        run: npm run prisma:generate
+
+      - name: Bootstrap production app DB
+        run: npm run bootstrap:prod-db

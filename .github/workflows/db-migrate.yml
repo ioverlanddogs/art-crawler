@@ -1,0 +1,53 @@
+name: db-migrate
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - packages/app/prisma/schema.prisma
+      - packages/app/prisma/migrations/**
+      - packages/app/package.json
+      - package-lock.json
+      - .github/workflows/db-migrate.yml
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: packages/app
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Validate required production DB secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "${DATABASE_URL:-}" ]] || missing+=("DATABASE_URL")
+          [[ -n "${DATABASE_URL_DIRECT:-}" ]] || missing+=("DATABASE_URL_DIRECT")
+
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required production environment secret(s): ${missing[*]}" >&2
+            echo "Add missing secrets to the GitHub 'production' environment before re-running." >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate Prisma client for app
+        run: npm run prisma:generate
+
+      - name: Apply production migrations (deploy only)
+        run: npm run prisma:migrate:deploy
