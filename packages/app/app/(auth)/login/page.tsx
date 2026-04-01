@@ -1,47 +1,29 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useState } from 'react';
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function onSubmit(event: FormEvent) {
-    event.preventDefault();
+  function handleSignIn() {
     setLoading(true);
-    setError(null);
-
-    const result = await signIn('credentials', { email, password, redirect: false });
-    if (result?.ok) {
-      router.push('/dashboard');
-      router.refresh();
-      return;
-    }
-
-    setError('Invalid email or password.');
-    setLoading(false);
+    signIn('google', { callbackUrl: '/dashboard' });
   }
 
   return (
-    <main style={{ maxWidth: 420, margin: '80px auto', padding: 20 }}>
-      <h1>Pipeline Admin Login</h1>
-      <form onSubmit={onSubmit} style={{ display: 'grid', gap: 12 }}>
-        <label>
-          Email
-          <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" required />
-        </label>
-        <label>
-          Password
-          <input value={password} onChange={(e) => setPassword(e.target.value)} type="password" required />
-        </label>
-        <button type="submit" disabled={loading}>{loading ? 'Signing in...' : 'Sign in'}</button>
-      </form>
-      {error ? <p style={{ color: '#b91c1c' }}>{error}</p> : null}
+    <main style={{ maxWidth: 420, margin: '80px auto', padding: 20, textAlign: 'center' }}>
+      <h1>Pipeline Admin</h1>
+      <p style={{ color: '#6b7280', marginBottom: 24 }}>
+        Sign in with your authorised Google account to continue.
+      </p>
+      <button
+        onClick={handleSignIn}
+        disabled={loading}
+        style={{ padding: '10px 24px', fontSize: 16, cursor: loading ? 'not-allowed' : 'pointer' }}
+      >
+        {loading ? 'Redirecting...' : 'Sign in with Google'}
+      </button>
     </main>
   );
 }
