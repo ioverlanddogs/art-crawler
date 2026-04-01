@@ -13,7 +13,11 @@
     "pretest": "npm run prisma:generate",
     "test": "vitest run",
     "prisma:generate": "prisma generate",
-    "prisma:push": "DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required for @artio/app prisma:push} DATABASE_URL_DIRECT=${DATABASE_URL_DIRECT:-$DATABASE_URL} prisma db push"
+    "prisma:push": "DATABASE_URL=${DATABASE_URL:?DATABASE_URL is required for @artio/app prisma:push} DATABASE_URL_DIRECT=${DATABASE_URL_DIRECT:-$DATABASE_URL} prisma db push",
+    "prisma:migrate:status": "prisma migrate status --schema prisma/schema.prisma",
+    "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
+    "create:admin": "node --import tsx scripts/create-admin.ts",
+    "bootstrap:prod-db": "node --import tsx scripts/bootstrap-production-db.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -35,6 +39,7 @@
     "@types/bcryptjs": "^2.4.6",
     "eslint": "^8.57.0",
     "@typescript-eslint/parser": "^7.0.0",
-    "@typescript-eslint/eslint-plugin": "^7.0.0"
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "tsx": "^4.20.6"
   }
 }
