@@ -3,6 +3,7 @@ import fs from 'node:fs/promises';
 
 const nextMock = vi.fn(() => ({ kind: 'next' }));
 const redirectMock = vi.fn((url: URL) => ({ kind: 'redirect', location: url.toString() }));
+const getTokenMock = vi.fn();
 
 vi.mock('next/server', () => ({
   NextResponse: {
@@ -11,14 +12,18 @@ vi.mock('next/server', () => ({
   }
 }));
 
+vi.mock('next-auth/jwt', () => ({
+  getToken: getTokenMock
+}));
+
 describe('auth middleware and login route consistency', () => {
   test('middleware redirects anonymous users to login with callbackUrl', async () => {
+    getTokenMock.mockResolvedValueOnce(null);
     const { default: middleware } = await import('@/middleware');
 
-    const response = middleware({
+    const response = await middleware({
       url: 'https://app.example.com/dashboard?tab=ops',
-      nextUrl: { pathname: '/dashboard', search: '?tab=ops' },
-      cookies: { get: vi.fn().mockReturnValue(undefined) }
+      nextUrl: { pathname: '/dashboard', search: '?tab=ops' }
     } as never);
 
     expect(redirectMock).toHaveBeenCalledTimes(1);
@@ -28,17 +33,32 @@ describe('auth middleware and login route consistency', () => {
     });
   });
 
-  test('middleware allows requests when database session cookie is present', async () => {
+  test('middleware allows requests when a valid ACTIVE auth token is present', async () => {
+    getTokenMock.mockResolvedValueOnce({ status: 'ACTIVE' });
     const { default: middleware } = await import('@/middleware');
 
-    const response = middleware({
+    const response = await middleware({
       url: 'https://app.example.com/dashboard',
-      nextUrl: { pathname: '/dashboard', search: '' },
-      cookies: { get: vi.fn((name: string) => (name === 'next-auth.session-token' ? { value: 'token' } : undefined)) }
+      nextUrl: { pathname: '/dashboard', search: '' }
     } as never);
 
     expect(nextMock).toHaveBeenCalledTimes(1);
     expect(response).toEqual({ kind: 'next' });
+  });
+
+  test('middleware rejects token payloads without ACTIVE status', async () => {
+    getTokenMock.mockResolvedValueOnce({ status: 'PENDING' });
+    const { default: middleware } = await import('@/middleware');
+
+    const response = await middleware({
+      url: 'https://app.example.com/dashboard',
+      nextUrl: { pathname: '/dashboard', search: '' }
+    } as never);
+
+    expect(response).toEqual({
+      kind: 'redirect',
+      location: 'https://app.example.com/login?callbackUrl=%2Fdashboard'
+    });
   });
 
   test('middleware matcher excludes auth and non-admin API routes', async () => {

@@ -1,17 +1,17 @@
 import type { NextRequest } from 'next/server';
 import { NextResponse } from 'next/server';
+import { getToken } from 'next-auth/jwt';
 
-const SESSION_COOKIE_NAMES = ['__Secure-next-auth.session-token', 'next-auth.session-token'];
+async function hasValidSession(request: NextRequest): Promise<boolean> {
+  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
 
-function hasSessionCookie(request: NextRequest): boolean {
-  return SESSION_COOKIE_NAMES.some((cookieName) => {
-    const cookie = request.cookies.get(cookieName);
-    return typeof cookie?.value === 'string' && cookie.value.length > 0;
-  });
+  if (!token) return false;
+
+  return token.status === 'ACTIVE';
 }
 
-export default function middleware(request: NextRequest) {
-  if (hasSessionCookie(request)) {
+export default async function middleware(request: NextRequest) {
+  if (await hasValidSession(request)) {
     return NextResponse.next();
   }
 

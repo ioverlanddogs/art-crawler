@@ -1,30 +1,34 @@
 import type { NextAuthOptions } from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
-import { PrismaAdapter } from '@next-auth/prisma-adapter';
-import { prisma } from './db';
 import { isDatabaseRuntimeReady } from './runtime-env';
 import { getGoogleClientId, getGoogleClientSecret } from './env';
+import { prisma } from './db';
+import { createAdminPrismaAdapter } from './auth-adapter';
 
 const databaseReady = isDatabaseRuntimeReady();
+const googleClientId = getGoogleClientId();
+const googleClientSecret = getGoogleClientSecret();
+const googleProviderReady = Boolean(googleClientId && googleClientSecret);
 
 function normaliseEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
 export const authOptions: NextAuthOptions = {
-  adapter: databaseReady ? PrismaAdapter(prisma) : undefined,
-  session: { strategy: 'database' },
+  adapter: databaseReady ? createAdminPrismaAdapter() : undefined,
+  session: { strategy: 'jwt' },
   pages: { signIn: '/login' },
-  providers: [
-    GoogleProvider({
-      clientId: getGoogleClientId() ?? '',
-      clientSecret: getGoogleClientSecret() ?? ''
-    })
-  ],
+  providers: googleProviderReady
+    ? [
+        GoogleProvider({
+          clientId: googleClientId as string,
+          clientSecret: googleClientSecret as string
+        })
+      ]
+    : [],
   callbacks: {
     async signIn({ user }) {
-      if (!databaseReady) return false;
-      if (!user.email) return false;
+      if (!databaseReady || !googleProviderReady || !user.email) return false;
 
       const email = normaliseEmail(user.email);
       const adminUser = await prisma.adminUser.findFirst({
@@ -43,21 +47,55 @@ export const authOptions: NextAuthOptions = {
 
       return true;
     },
-    async session({ session, user }) {
-      if (!databaseReady || !session.user || !user?.id) return session;
+    async jwt({ token, user }) {
+      if (!databaseReady) return token;
 
-      const adminUser = await prisma.adminUser.findUnique({
-        where: { id: user.id },
+      const adminUserId = user?.id ?? token.sub;
+      const adminUserEmail = user?.email ?? token.email;
+
+      if (!adminUserId && !adminUserEmail) {
+        return token;
+      }
+
+      const adminUser = await prisma.adminUser.findFirst({
+        where: {
+          OR: [
+            ...(adminUserId ? [{ id: adminUserId }] : []),
+            ...(adminUserEmail ? [{ email: { equals: normaliseEmail(adminUserEmail), mode: 'insensitive' as const } }] : [])
+          ]
+        },
         select: { id: true, role: true, status: true, email: true, name: true }
       });
 
-      if (!adminUser) return session;
+      if (!adminUser) {
+        return token;
+      }
 
-      session.user.id = adminUser.id;
-      session.user.role = adminUser.role;
-      session.user.status = adminUser.status;
-      session.user.email = adminUser.email;
-      session.user.name = adminUser.name;
+      token.sub = adminUser.id;
+      token.email = adminUser.email;
+      token.name = adminUser.name;
+      token.role = adminUser.role;
+      token.status = adminUser.status;
+
+      return token;
+    },
+    async session({ session, token }) {
+      if (!session.user) return session;
+
+      if (token.sub) {
+        session.user.id = token.sub;
+      }
+
+      if (typeof token.email === 'string') {
+        session.user.email = token.email;
+      }
+
+      if (typeof token.name === 'string' || token.name === null) {
+        session.user.name = token.name;
+      }
+
+      session.user.role = token.role === 'viewer' || token.role === 'moderator' || token.role === 'operator' || token.role === 'admin' ? token.role : 'viewer';
+      session.user.status = token.status === 'ACTIVE' || token.status === 'PENDING' || token.status === 'SUSPENDED' ? token.status : 'PENDING';
 
       return session;
     }

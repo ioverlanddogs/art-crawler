@@ -3,8 +3,22 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const prismaMock = {
   adminUser: {
     findFirst: vi.fn(),
-    findUnique: vi.fn(),
     update: vi.fn()
+  },
+  account: {
+    findUnique: vi.fn(),
+    create: vi.fn(),
+    delete: vi.fn()
+  },
+  session: {
+    create: vi.fn(),
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn()
+  },
+  verificationToken: {
+    create: vi.fn(),
+    delete: vi.fn()
   }
 };
 
@@ -61,8 +75,8 @@ describe('google auth consistency', () => {
     expect(prismaMock.adminUser.update).not.toHaveBeenCalled();
   });
 
-  test('session callback maps database admin fields onto session user', async () => {
-    prismaMock.adminUser.findUnique.mockResolvedValueOnce({
+  test('jwt/session callbacks map admin fields onto token + session user', async () => {
+    prismaMock.adminUser.findFirst.mockResolvedValueOnce({
       id: 'admin-1',
       email: 'admin@example.com',
       name: 'Admin',
@@ -71,9 +85,14 @@ describe('google auth consistency', () => {
     });
 
     const { authOptions } = await import('@/lib/auth');
+    const token = await authOptions.callbacks!.jwt!({
+      token: { sub: 'admin-1' },
+      user: undefined
+    } as never);
+
     const session = await authOptions.callbacks!.session!({
       session: { user: { name: null, email: null } },
-      user: { id: 'admin-1' }
+      token
     } as never);
 
     expect(session.user).toMatchObject({
@@ -93,6 +112,7 @@ describe('google auth consistency', () => {
 
     expect(result).toBe(false);
     expect(authOptions.adapter).toBeUndefined();
+    expect(authOptions.session).toEqual({ strategy: 'jwt' });
     expect(prismaMock.adminUser.findFirst).not.toHaveBeenCalled();
   });
 });
