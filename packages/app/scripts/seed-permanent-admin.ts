@@ -1,6 +1,5 @@
 import { PrismaClient } from '../generated/prisma/index.js';
-
-const PERMANENT_ADMIN_EMAIL = 'myspchosting@gmail.com';
+import { hashPassword } from '../lib/password.js';
 
 function assertDatabaseEnv() {
   const missing = ['DATABASE_URL', 'DATABASE_URL_DIRECT'].filter((key) => {
@@ -16,22 +15,31 @@ function assertDatabaseEnv() {
 async function main() {
   assertDatabaseEnv();
 
+  const email = process.env.BOOTSTRAP_ADMIN_EMAIL;
+  if (!email) {
+    throw new Error('BOOTSTRAP_ADMIN_EMAIL env var is required');
+  }
+
+  const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+
   const prisma = new PrismaClient({ log: ['error'] });
 
   try {
     await prisma.$connect();
 
     const adminUser = await prisma.adminUser.upsert({
-      where: { email: PERMANENT_ADMIN_EMAIL },
+      where: { email },
       create: {
-        email: PERMANENT_ADMIN_EMAIL,
+        email,
         name: 'System Admin',
         role: 'admin',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        ...(password ? { passwordHash: await hashPassword(password) } : {})
       },
       update: {
         role: 'admin',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        ...(password ? { passwordHash: await hashPassword(password) } : {})
       }
     });
 
