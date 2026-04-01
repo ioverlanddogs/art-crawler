@@ -2,7 +2,7 @@ import type { NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import { isDatabaseRuntimeReady } from './runtime-env';
-import { getGoogleClientId, getGoogleClientSecret } from './env';
+import { getGoogleClientId, getGoogleClientSecret, getApprovedGoogleEmail } from './env';
 import { prisma } from './db';
 import { createAdminPrismaAdapter } from './auth-adapter';
 import { verifyPassword } from './password';
@@ -85,10 +85,33 @@ export const authOptions: NextAuthOptions = {
   ],
   callbacks: {
     async signIn({ user, account }) {
+      // Credentials: authorize() has already verified everything
       if (account?.provider === 'credentials') return true;
+
       if (!databaseReady || !googleProviderReady || !nextAuthSecretReady || !user.email) return false;
 
       const email = normaliseEmail(user.email);
+
+      // Env-var approved email: upsert AdminUser on first sign-in, no invite required
+      const approvedEmail = getApprovedGoogleEmail();
+      if (approvedEmail && email === approvedEmail) {
+        await prisma.adminUser.upsert({
+          where: { email },
+          create: {
+            email,
+            name: user.name ?? null,
+            role: 'admin',
+            status: 'ACTIVE'
+          },
+          update: {
+            status: 'ACTIVE',
+            lastLoginAt: new Date()
+          }
+        });
+        return true;
+      }
+
+      // Existing invite flow: email must match a pre-existing ACTIVE AdminUser row
       const adminUser = await prisma.adminUser.findFirst({
         where: { email: { equals: email, mode: 'insensitive' } },
         select: { id: true, status: true }
