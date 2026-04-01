@@ -1,49 +1,102 @@
 'use client';
 
 import { signIn } from 'next-auth/react';
-import { useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { FormEvent, useState } from 'react';
 
 const DEFAULT_CALLBACK_URL = '/dashboard';
 
 function resolveErrorMessage(error: string | null): string | null {
   if (!error) return null;
-  if (error === 'AccessDenied') {
-    return 'Access denied. Your Google account must match an ACTIVE admin user.';
+  if (error === 'CredentialsSignin') {
+    return 'Invalid email or password.';
   }
-  return 'Unable to sign in. Please try again or contact an administrator.';
+  return 'Unable to sign in. Please try again.';
 }
 
 export default function LoginClient() {
   const [loading, setLoading] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const router = useRouter();
 
   const callbackUrl = searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL;
-  const errorMessage = resolveErrorMessage(searchParams.get('error'));
 
-  function handleSignIn() {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!email.trim() || !password.trim()) {
+      setErrorMessage('Email and password are required.');
+      return;
+    }
+
     setLoading(true);
-    signIn('google', { callbackUrl });
+    setErrorMessage(null);
+
+    const result = await signIn('credentials', {
+      email,
+      password,
+      redirect: false
+    });
+
+    if (result?.ok) {
+      router.push(callbackUrl);
+      return;
+    }
+
+    setLoading(false);
+    setErrorMessage(resolveErrorMessage(result?.error ?? null));
+  }
+
+  async function handleGoogleSignIn() {
+    setLoading(true);
+    await signIn('google', { callbackUrl });
   }
 
   return (
     <main style={{ maxWidth: 420, margin: '80px auto', padding: 20, textAlign: 'center' }}>
       <h1>Pipeline Admin</h1>
-      <p style={{ color: '#6b7280', marginBottom: 24 }}>
-        Sign in with your authorised Google account to continue.
-      </p>
+      <p style={{ color: '#6b7280', marginBottom: 24 }}>Sign in with your admin credentials to continue.</p>
       {errorMessage ? (
         <p role="alert" style={{ color: '#b91c1c', marginBottom: 16 }}>
           {errorMessage}
         </p>
       ) : null}
-      <button
-        onClick={handleSignIn}
-        disabled={loading}
-        style={{ padding: '10px 24px', fontSize: 16, cursor: loading ? 'not-allowed' : 'pointer' }}
-      >
-        {loading ? 'Redirecting...' : 'Sign in with Google'}
-      </button>
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <input
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder="Email"
+          autoComplete="email"
+          style={{ padding: '10px 12px', fontSize: 16 }}
+        />
+        <input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          placeholder="Password"
+          autoComplete="current-password"
+          style={{ padding: '10px 12px', fontSize: 16 }}
+        />
+        <button type="submit" disabled={loading} style={{ padding: '10px 24px', fontSize: 16, cursor: loading ? 'not-allowed' : 'pointer' }}>
+          {loading ? 'Signing in...' : 'Sign in'}
+        </button>
+      </form>
+      {process.env.NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true' ? (
+        <>
+          <hr style={{ margin: '24px 0' }} />
+          <button
+            onClick={handleGoogleSignIn}
+            disabled={loading}
+            style={{ padding: '10px 24px', fontSize: 16, cursor: loading ? 'not-allowed' : 'pointer', backgroundColor: '#f3f4f6' }}
+          >
+            Sign in with Google
+          </button>
+        </>
+      ) : null}
     </main>
   );
 }

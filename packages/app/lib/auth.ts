@@ -1,9 +1,12 @@
 import type { NextAuthOptions } from 'next-auth';
+import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import { isDatabaseRuntimeReady } from './runtime-env';
 import { getGoogleClientId, getGoogleClientSecret } from './env';
 import { prisma } from './db';
 import { createAdminPrismaAdapter } from './auth-adapter';
+import { verifyPassword } from './password';
+import { checkRateLimit, recordFailure, resetRateLimit } from './auth-rate-limit';
 
 const databaseReady = isDatabaseRuntimeReady();
 const googleClientId = getGoogleClientId();
@@ -18,18 +21,71 @@ function normaliseEmail(email: string): string {
 export const authOptions: NextAuthOptions = {
   adapter: databaseReady ? createAdminPrismaAdapter() : undefined,
   session: { strategy: 'jwt', maxAge: 60 * 60 * 8 },
-  jwt: { maxAge: 60 * 5 },
+  jwt: { maxAge: 60 * 60 * 8 },
   pages: { signIn: '/login' },
-  providers: googleProviderReady
-    ? [
-        GoogleProvider({
-          clientId: googleClientId as string,
-          clientSecret: googleClientSecret as string
-        })
-      ]
-    : [],
+  providers: [
+    CredentialsProvider({
+      name: 'Credentials',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' }
+      },
+      async authorize(credentials: Record<string, string> | undefined) {
+        if (!databaseReady || !nextAuthSecretReady || !credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        const email = normaliseEmail(credentials.email);
+        // TODO: replace with Redis-backed limiter before multi-instance deployment
+        // (in-memory limits are per-process only — see import route for same note)
+        const rateLimitCheck = checkRateLimit(email);
+        if (!rateLimitCheck.allowed) {
+          return null;
+        }
+
+        const adminUser = await prisma.adminUser.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
+          select: { id: true, email: true, name: true, role: true, status: true, passwordHash: true }
+        });
+
+        if (!adminUser || adminUser.status !== 'ACTIVE' || !adminUser.passwordHash) {
+          return null;
+        }
+
+        const isValidPassword = await verifyPassword(credentials.password, adminUser.passwordHash);
+        if (!isValidPassword) {
+          recordFailure(email);
+          return null;
+        }
+
+        resetRateLimit(email);
+
+        await prisma.adminUser.update({
+          where: { id: adminUser.id },
+          data: { lastLoginAt: new Date() }
+        });
+
+        return {
+          id: adminUser.id,
+          email: adminUser.email,
+          name: adminUser.name,
+          role: adminUser.role,
+          status: adminUser.status
+        };
+      }
+    }),
+    ...(googleProviderReady
+      ? [
+          GoogleProvider({
+            clientId: googleClientId as string,
+            clientSecret: googleClientSecret as string
+          })
+        ]
+      : [])
+  ],
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account }) {
+      if (account?.provider === 'credentials') return true;
       if (!databaseReady || !googleProviderReady || !nextAuthSecretReady || !user.email) return false;
 
       const email = normaliseEmail(user.email);

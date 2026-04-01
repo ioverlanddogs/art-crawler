@@ -1,8 +1,10 @@
 import { PrismaClient } from '../generated/prisma/index.js';
+import { hashPassword } from '../lib/password.js';
 
 type CliOptions = {
   email?: string;
   name?: string;
+  password?: string;
   dryRun: boolean;
 };
 
@@ -16,6 +18,7 @@ function getOptions(): CliOptions {
   return {
     email: readArg('--email') ?? process.env.BOOTSTRAP_ADMIN_EMAIL,
     name: readArg('--name') ?? process.env.BOOTSTRAP_ADMIN_NAME,
+    password: readArg('--password') ?? process.env.BOOTSTRAP_ADMIN_PASSWORD,
     dryRun: process.argv.includes('--dry-run')
   };
 }
@@ -37,7 +40,7 @@ async function main() {
   assertDatabaseEnv();
 
   if (!options.email) {
-    throw new Error('Admin email is required. Pass --email or BOOTSTRAP_ADMIN_EMAIL. The admin user signs in via Google OAuth using this email address.');
+    throw new Error('Admin email is required. Pass --email or BOOTSTRAP_ADMIN_EMAIL. The admin user signs in via credentials login or Google OAuth using this email address.');
   }
 
   const prisma = new PrismaClient({ log: ['error'] });
@@ -70,7 +73,7 @@ async function main() {
 
     if (options.dryRun) {
       console.log('Dry run complete: no active admin exists and a new admin would be created.');
-      console.log('The admin user signs in via Google OAuth using this email address.');
+      console.log('The admin user signs in via credentials login or Google OAuth using this email address.');
       return;
     }
 
@@ -79,12 +82,13 @@ async function main() {
         email: options.email,
         name: options.name,
         role: 'admin',
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        ...(options.password ? { passwordHash: await hashPassword(options.password) } : {})
       }
     });
 
     console.log(`Created initial admin user: ${options.email}`);
-    console.log('The admin user signs in via Google OAuth using this email address.');
+    console.log('The admin user signs in via credentials login or Google OAuth using this email address.');
   } finally {
     await prisma.$disconnect();
   }

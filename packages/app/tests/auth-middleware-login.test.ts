@@ -127,14 +127,16 @@ describe('auth middleware and login route consistency', () => {
     expect(pageSource).toContain('<LoginClient />');
   });
 
-  test('LoginClient supports Google sign-in, callbackUrl handling, and access denied messaging', async () => {
+  test('LoginClient supports credentials sign-in, callbackUrl handling, and optional Google fallback', async () => {
     const loginClientSource = await fs.readFile(new URL('../app/(auth)/login/LoginClient.tsx', import.meta.url), 'utf8');
 
+    expect(loginClientSource).toContain("signIn('credentials'");
+    expect(loginClientSource).toContain('redirect: false');
+    expect(loginClientSource).toContain('Email and password are required.');
     expect(loginClientSource).toContain("signIn('google', { callbackUrl })");
     expect(loginClientSource).toContain("searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL");
     expect(loginClientSource).toContain("DEFAULT_CALLBACK_URL = '/dashboard'");
-    expect(loginClientSource).toContain("error === 'AccessDenied'");
-    expect(loginClientSource).toContain('ACTIVE admin user');
-    expect(loginClientSource).toContain("searchParams.get('error')");
+    expect(loginClientSource).toContain("NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true'");
+    expect(loginClientSource).toContain('result?.error ?? null');
   });
 });
