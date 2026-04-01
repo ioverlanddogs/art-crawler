@@ -123,4 +123,19 @@ describe('admin auth coverage', () => {
     const payload = await res.json();
     expect(payload.items).toEqual([{ id: 'evt-1' }]);
   });
+
+  test('legacy moderation endpoints remain auth-protected while returning 410', async () => {
+    const { POST: approveLegacy } = await import('@/app/api/admin/moderation/[id]/approve/route');
+    const { POST: rejectLegacy } = await import('@/app/api/admin/moderation/[id]/reject/route');
+
+    requireRoleMock.mockRejectedValueOnce(new Response('Unauthorized', { status: 401 }));
+    await expect(approveLegacy()).rejects.toMatchObject({ status: 401 });
+
+    requireRoleMock.mockRejectedValueOnce(new Response('Forbidden', { status: 403 }));
+    await expect(rejectLegacy()).rejects.toMatchObject({ status: 403 });
+
+    requireRoleMock.mockResolvedValueOnce({ user: { role: 'viewer', status: 'ACTIVE' } });
+    const res = await approveLegacy();
+    expect(res.status).toBe(410);
+  });
 });
