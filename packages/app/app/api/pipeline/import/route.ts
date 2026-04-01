@@ -6,10 +6,17 @@ import { processImportBatch, importSchema } from '@/lib/pipeline/import-service'
 export async function POST(req: Request) {
   if (!isPipelineImportAuthorized(req)) return err('Unauthorized', 'UNAUTHORIZED', 401);
 
+  const contentLengthHeader = req.headers.get('content-length');
+  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : 0;
+  if (Number.isFinite(contentLength) && contentLength > 512_000) {
+    return err('Payload too large', 'TOO_LARGE', 413);
+  }
+
   // NOTE: Intentionally no per-instance in-memory rate limiter.
   // In-memory limits are misleading in multi-instance/serverless deployments because they
   // do not provide consistent cross-instance enforcement. Use edge/proxy-level protection
   // (or a shared Redis limiter) when infrastructure support is available for this app service.
+  // TODO: Add Redis-backed rate limiting for consistent multi-instance enforcement.
 
   const body = await req.json();
   const parsed = importSchema.safeParse(body);

@@ -33,7 +33,7 @@ export async function runScore(candidateId: string, enqueueNext = true) {
   });
   const score = inferScore(signals);
   await prisma.miningCandidate.update({ where: { id: candidateId }, data: { confidenceScore: score, status: 'SCORED' } });
-  await prisma.pipelineTelemetry.create({ data: { stage: 'score', status: 'success', candidateId, configVersion: c.configVersion, detail: JSON.stringify(signals) } });
+  await prisma.pipelineTelemetry.create({ data: { sourceId: c.sourceId, stage: 'score', status: 'success', candidateId, configVersion: c.configVersion, detail: JSON.stringify(signals) } });
   if (enqueueNext) {
     await enqueueNextStage(deduplicateQueue, 'deduplicate', candidateId);
   }

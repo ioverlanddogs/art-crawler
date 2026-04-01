@@ -36,6 +36,21 @@ describe('pipeline import route contract', () => {
     expect(processImportBatchMock).not.toHaveBeenCalled();
   });
 
+  test('rejects payloads larger than 512000 bytes', async () => {
+    const { POST } = await import('@/app/api/pipeline/import/route');
+    const response = await POST(
+      new Request('http://localhost/api/pipeline/import', {
+        method: 'POST',
+        headers: { authorization: 'Bearer route-secret', 'content-type': 'application/json', 'content-length': '512001' },
+        body: JSON.stringify({ source: 'mining-service-v1', region: 'us', events: [] })
+      })
+    );
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({ code: 'TOO_LARGE' });
+    expect(processImportBatchMock).not.toHaveBeenCalled();
+  });
+
 
   test('rejects wrong secret', async () => {
     const { POST } = await import('@/app/api/pipeline/import/route');

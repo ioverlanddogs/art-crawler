@@ -4,7 +4,7 @@ import { enqueueNextStage } from '../lib/stage-chaining.js';
 
 export async function runMature(candidateId: string, enqueueNext = true) {
   const c = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId } });
-  await prisma.pipelineTelemetry.create({ data: { stage: 'mature', status: 'success', detail: 'MVP maturity check passed', candidateId, configVersion: c.configVersion } });
+  await prisma.pipelineTelemetry.create({ data: { sourceId: c.sourceId, stage: 'mature', status: 'success', detail: 'MVP maturity check passed', candidateId, configVersion: c.configVersion } });
   if (enqueueNext) {
     await enqueueNextStage(exportQueue, 'export', candidateId);
   }

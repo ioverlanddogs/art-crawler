@@ -19,6 +19,7 @@ export async function runDiscovery(enqueueNext = true) {
     if (!isSourceHealthy(source)) {
       await prisma.pipelineTelemetry.create({
         data: {
+          sourceId: source.id,
           stage: 'discovery',
           status: 'skip',
           configVersion: cfg.version,
@@ -50,6 +51,7 @@ export async function runDiscovery(enqueueNext = true) {
     if (duplicate) {
       await prisma.pipelineTelemetry.create({
         data: {
+          sourceId: source.id,
           stage: 'discovery',
           status: 'skip',
           candidateId: duplicate.id,
@@ -83,6 +85,7 @@ export async function runDiscovery(enqueueNext = true) {
     await prisma.pipelineTelemetry.create({
       data: {
         stage: 'discovery',
+        sourceId: source.id,
         status: 'success',
         candidateId: candidate.id,
         configVersion: cfg.version,
