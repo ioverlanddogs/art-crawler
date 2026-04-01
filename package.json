@@ -11,7 +11,7 @@
     "build": "npm run build --workspaces",
     "test": "npm run test --workspaces",
     "test:e2e": "playwright test",
-    "setup:local": "cp -n .env.example .env || true && set -a && . ./.env && set +a && docker compose up -d && npm install && npm run wait:services && npm run bootstrap:db && npm run prisma:generate && npm run prisma:push && npm run seed:demo",
+    "setup:local": "cp -n .env.example .env || true && set -a && . ./.env && set +a && docker compose up -d && npm install && npm run wait:services && npm run bootstrap:db && npm run prisma:generate && npm run prisma:push && npm run seed:demo && npm run seed:permanent-admin -w @artio/app",
     "wait:services": "node scripts/wait-for-services.mjs",
     "bootstrap:db": "node scripts/bootstrap-databases.mjs",
     "prisma:generate": "npm run prisma:generate -w @artio/app && npm run prisma:generate -w @artio/mining",
