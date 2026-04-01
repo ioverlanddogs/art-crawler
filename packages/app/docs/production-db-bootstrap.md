@@ -10,11 +10,12 @@ Set these in Vercel (or your shell when running locally against Neon):
 - `DATABASE_URL_DIRECT` (direct Neon connection string for Prisma migrations)
 - `NEXTAUTH_SECRET`
 - `NEXTAUTH_URL`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
 
 Optional admin bootstrap inputs:
 
 - `BOOTSTRAP_ADMIN_EMAIL`
-- `BOOTSTRAP_ADMIN_PASSWORD`
 - `BOOTSTRAP_ADMIN_NAME`
 
 ## Safe command order
@@ -24,7 +25,7 @@ From repo root:
 ```bash
 npm ci
 npm run prisma:generate -w @artio/app
-npm run bootstrap:prod-db -w @artio/app -- --admin-email "admin@example.com" --admin-password "<strong-password>" --admin-name "Initial Admin"
+npm run bootstrap:prod-db -w @artio/app -- --admin-email "admin@example.com" --admin-name "Initial Admin"
 ```
 
 ### What bootstrap does
@@ -47,7 +48,6 @@ Use the GitHub **production environment** for DB workflows and add these environ
 - `DATABASE_URL`
 - `DATABASE_URL_DIRECT`
 - `BOOTSTRAP_ADMIN_EMAIL`
-- `BOOTSTRAP_ADMIN_PASSWORD`
 - `BOOTSTRAP_ADMIN_NAME`
 
 ### 1) One-time bootstrap: `db-bootstrap`
@@ -76,13 +76,13 @@ Use the GitHub **production environment** for DB workflows and add these environ
 Check migration status and admin-creation preconditions without writing:
 
 ```bash
-npm run bootstrap:prod-db -w @artio/app -- --dry-run --admin-email "admin@example.com" --admin-password "<strong-password>"
+npm run bootstrap:prod-db -w @artio/app -- --dry-run --admin-email "admin@example.com"
 ```
 
 Run admin creation logic only:
 
 ```bash
-npm run create:admin -w @artio/app -- --email "admin@example.com" --password "<strong-password>" --name "Initial Admin"
+npm run create:admin -w @artio/app -- --email "admin@example.com" --name "Initial Admin"
 ```
 
 ## Verification
@@ -94,6 +94,8 @@ npm run prisma:migrate:status -w @artio/app
 ```
 
 - Verify `AdminUser` exists and is login-ready (`role=admin`, `status=ACTIVE`) by checking via SQL client/Prisma Studio.
+- Verify Google OAuth credentials (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`) and NextAuth vars are present before testing login.
+- Admin login is Google-only; successful sign-in requires an existing ACTIVE `AdminUser` row with matching email.
 - In GitHub Actions, verify `db-bootstrap`/`db-migrate`/`db-status` job completion in the **production** environment.
 
 ## Vercel deployment note
