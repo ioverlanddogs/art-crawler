@@ -1,21 +1,19 @@
 #!/usr/bin/env node
-import bcrypt from 'bcryptjs';
 import { PrismaClient } from '../packages/app/generated/prisma/index.js';
 
 const prisma = new PrismaClient();
+const DEMO_ADMIN_EMAIL = 'admin@artio.io';
+const DEMO_ADMIN_NAME = 'Artio Admin';
 
 async function main() {
-  const passwordHash = await bcrypt.hash('artio-admin-demo', 12);
-
   const admin = await prisma.adminUser.upsert({
-    where: { email: 'admin@artio.io' },
-    update: { role: 'admin', status: 'ACTIVE', passwordHash, name: 'Artio Admin' },
+    where: { email: DEMO_ADMIN_EMAIL },
+    update: { role: 'admin', status: 'ACTIVE', name: DEMO_ADMIN_NAME },
     create: {
-      email: 'admin@artio.io',
-      name: 'Artio Admin',
+      email: DEMO_ADMIN_EMAIL,
+      name: DEMO_ADMIN_NAME,
       role: 'admin',
-      status: 'ACTIVE',
-      passwordHash
+      status: 'ACTIVE'
     }
   });
 
@@ -104,7 +102,8 @@ async function main() {
     });
   }
 
-  console.log('Seed complete for admin@artio.io / artio-admin-demo');
+  console.log(`Seed complete for demo admin: ${DEMO_ADMIN_EMAIL}`);
+  console.log('Sign-in method: Google OAuth only (no password is seeded).');
 }
 
 main()
