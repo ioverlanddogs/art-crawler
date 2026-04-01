@@ -34,6 +34,37 @@ npm run bootstrap:prod-db -w @artio/app -- --admin-email "admin@example.com" --a
 3. Runs `prisma migrate deploy` (production-safe migration path).
 4. Creates an initial `AdminUser` only if there is no existing ACTIVE `admin` user.
 
+## GitHub Actions workflows (production)
+
+Use the GitHub **production environment** for DB workflows and add these environment secrets:
+
+- `DATABASE_URL`
+- `DATABASE_URL_DIRECT`
+- `BOOTSTRAP_ADMIN_EMAIL`
+- `BOOTSTRAP_ADMIN_PASSWORD`
+- `BOOTSTRAP_ADMIN_NAME`
+
+### 1) One-time bootstrap: `db-bootstrap`
+
+- Workflow file: `.github/workflows/db-bootstrap.yml`
+- Trigger: manual (`workflow_dispatch`)
+- Use this for first-time production DB initialization (or any controlled rerun).
+- It installs dependencies, generates Prisma client, runs bootstrap (`prisma migrate deploy` + idempotent admin creation).
+- Admin identity can come from workflow inputs or production environment secrets.
+
+### 2) Ongoing migrations: `db-migrate`
+
+- Workflow file: `.github/workflows/db-migrate.yml`
+- Trigger: `push` to `main` when app Prisma schema/migrations-related files change.
+- It is intentionally narrow: installs dependencies, generates Prisma client, and runs `prisma migrate deploy` only.
+- It does **not** create or modify admin users.
+
+### 3) Manual operator check: `db-status`
+
+- Workflow file: `.github/workflows/db-status.yml`
+- Trigger: manual (`workflow_dispatch`)
+- Runs `prisma migrate status` in production context for before/after checks.
+
 ## Dry run / status checks
 
 Check migration status and admin-creation preconditions without writing:
@@ -57,6 +88,7 @@ npm run prisma:migrate:status -w @artio/app
 ```
 
 - Verify `AdminUser` exists and is login-ready (`role=admin`, `status=ACTIVE`) by checking via SQL client/Prisma Studio.
+- In GitHub Actions, verify `db-bootstrap`/`db-migrate`/`db-status` job completion in the **production** environment.
 
 ## Vercel deployment note
 
