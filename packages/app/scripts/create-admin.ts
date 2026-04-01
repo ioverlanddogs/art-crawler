@@ -40,7 +40,9 @@ async function main() {
   assertDatabaseEnv();
 
   if (!options.email) {
-    throw new Error('Admin email is required. Pass --email or BOOTSTRAP_ADMIN_EMAIL. The admin user signs in via credentials login or Google OAuth using this email address.');
+    throw new Error(
+      'Admin email is required. Pass --email or BOOTSTRAP_ADMIN_EMAIL. This email is provisioned for Google-first admin sign-in (credentials is break-glass only).'
+    );
   }
 
   const prisma = new PrismaClient({ log: ['error'] });
@@ -73,7 +75,7 @@ async function main() {
 
     if (options.dryRun) {
       console.log('Dry run complete: no active admin exists and a new admin would be created.');
-      console.log('The admin user signs in via credentials login or Google OAuth using this email address.');
+      console.log('This admin email is provisioned for Google-first sign-in; credentials is break-glass only.');
       return;
     }
 
@@ -88,7 +90,7 @@ async function main() {
     });
 
     console.log(`Created initial admin user: ${options.email}`);
-    console.log('The admin user signs in via credentials login or Google OAuth using this email address.');
+    console.log('This admin email is provisioned for Google-first sign-in; credentials is break-glass only.');
   } finally {
     await prisma.$disconnect();
   }

@@ -46,7 +46,10 @@ describe('google auth consistency', () => {
     prismaMock.adminUser.update.mockResolvedValueOnce({ id: 'admin-1' });
 
     const { authOptions } = await import('@/lib/auth');
-    const result = await authOptions.callbacks!.signIn!({ user: { email: '  ADMIN@Example.com  ' } } as never);
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: '  ADMIN@Example.com  ' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
 
     expect(result).toBe(true);
     expect(prismaMock.adminUser.findFirst).toHaveBeenCalledWith({
@@ -79,7 +82,10 @@ describe('google auth consistency', () => {
     prismaMock.adminUser.findFirst.mockResolvedValueOnce(null);
 
     const { authOptions } = await import('@/lib/auth');
-    const result = await authOptions.callbacks!.signIn!({ user: { email: 'nobody@example.com' } } as never);
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'nobody@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
 
     expect(result).toBe(false);
     expect(prismaMock.adminUser.update).not.toHaveBeenCalled();
@@ -98,11 +104,26 @@ describe('google auth consistency', () => {
     expect(prismaMock.adminUser.update).not.toHaveBeenCalled();
   });
 
+  test('rejects non-Google OAuth providers to enforce Google-first sign-in policy', async () => {
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'admin@example.com' },
+      account: { provider: 'github', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(false);
+    expect(prismaMock.adminUser.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.adminUser.upsert).not.toHaveBeenCalled();
+  });
+
   test('denies sign-in when admin user is not ACTIVE', async () => {
     prismaMock.adminUser.findFirst.mockResolvedValueOnce({ id: 'admin-2', status: 'SUSPENDED' });
 
     const { authOptions } = await import('@/lib/auth');
-    const result = await authOptions.callbacks!.signIn!({ user: { email: 'suspended@example.com' } } as never);
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'suspended@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
 
     expect(result).toBe(false);
     expect(prismaMock.adminUser.update).not.toHaveBeenCalled();
@@ -166,7 +187,10 @@ describe('google auth consistency', () => {
     runtimeMock.mockReturnValue(false);
 
     const { authOptions } = await import('@/lib/auth');
-    const result = await authOptions.callbacks!.signIn!({ user: { email: 'admin@example.com' } } as never);
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'admin@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
 
     expect(result).toBe(false);
     expect(authOptions.adapter).toBeUndefined();
@@ -178,7 +202,10 @@ describe('google auth consistency', () => {
     delete process.env.NEXTAUTH_SECRET;
 
     const { authOptions } = await import('@/lib/auth');
-    const result = await authOptions.callbacks!.signIn!({ user: { email: 'admin@example.com' } } as never);
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'admin@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
 
     expect(result).toBe(false);
   });

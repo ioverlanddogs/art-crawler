@@ -39,7 +39,7 @@ describe('accept invite page UI states', () => {
 
     const html = renderToStaticMarkup(element as any);
     expect(html).toContain('Account activated');
-    expect(html).toContain('Sign in with the Google account');
+    expect(html).toContain('sign in with the same Google email');
     expect(html).toContain('/login');
   });
 });
