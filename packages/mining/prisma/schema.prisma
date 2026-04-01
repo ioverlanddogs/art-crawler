@@ -54,12 +54,15 @@ model ExportBatch {
 
 model PipelineTelemetry {
   id            String   @id @default(cuid())
+  sourceId      String?
   stage         String
   status        String
   detail        String?
   candidateId   String?
   configVersion Int
   createdAt     DateTime @default(now())
+
+  @@index([sourceId, stage, status])
 }
 
 model PipelineConfig {
@@ -88,6 +91,7 @@ model TrustedSource {
   lastSuccessAt         DateTime?
   lastFailureAt         DateTime?
   failureCount          Int      @default(0)
+  reliabilityCounters   Json     @default("{}")
   notes                 String?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt

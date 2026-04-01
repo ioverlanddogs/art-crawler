@@ -72,7 +72,7 @@ export async function runExtract(candidateId: string, ai: AiExtractor = mockAiEx
   }
 
   await prisma.miningCandidate.update({ where: { id: candidateId }, data: { extractedJson: extractedRecord as Prisma.InputJsonObject, parserType, status: 'EXTRACTED', lastError: hasExtractedCoreFields ? null : 'extraction_incomplete' } });
-  await prisma.pipelineTelemetry.create({ data: { stage: 'extract', status: hasExtractedCoreFields ? 'success' : 'failure', candidateId, configVersion: candidate.configVersion, detail: JSON.stringify({ sourceId: candidate.sourceId, parserType }) } });
+  await prisma.pipelineTelemetry.create({ data: { sourceId: candidate.sourceId, stage: 'extract', status: hasExtractedCoreFields ? 'success' : 'failure', candidateId, configVersion: candidate.configVersion, detail: JSON.stringify({ sourceId: candidate.sourceId, parserType }) } });
   if (enqueueNext) {
     await enqueueNextStage(normaliseQueue, 'normalise', candidateId);
   }

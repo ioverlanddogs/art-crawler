@@ -13,7 +13,7 @@ export async function runNormalise(candidateId: string, enqueueNext = true) {
   const title = (ext.title ?? 'Untitled').toString().trim();
   const fp = fingerprint(title, c.sourceUrl);
   await prisma.miningCandidate.update({ where: { id: candidateId }, data: { normalizedJson: { title, platform: ext.platform ?? 'generic' }, fingerprint: fp, status: 'NORMALISED' } });
-  await prisma.pipelineTelemetry.create({ data: { stage: 'normalise', status: 'success', candidateId, configVersion: c.configVersion } });
+  await prisma.pipelineTelemetry.create({ data: { sourceId: c.sourceId, stage: 'normalise', status: 'success', candidateId, configVersion: c.configVersion } });
   if (enqueueNext) {
     await enqueueNextStage(scoreQueue, 'score', candidateId);
   }

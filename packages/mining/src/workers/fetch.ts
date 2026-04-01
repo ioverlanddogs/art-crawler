@@ -6,6 +6,7 @@ import { markSourceFailure, markSourceSuccess } from '../lib/source-health.js';
 import { isApprovedBySourcePolicy, normalizeUrlForComparison, type SourcePolicy } from '../lib/source-url-policy.js';
 
 const MAX_REDIRECTS = 5;
+const FETCH_TIMEOUT_MS = 30_000;
 
 async function persistFetchFailure(candidateId: string, payload: {
   canonicalUrl: string;
@@ -28,35 +29,51 @@ async function persistFetchFailure(candidateId: string, payload: {
 
 async function fetchWithPolicy(seedUrl: string, sourcePolicy: SourcePolicy) {
   let currentUrl = normalizeUrlForComparison(seedUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort('fetch_timeout'), FETCH_TIMEOUT_MS);
 
-  for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
-    const response = await fetch(currentUrl, {
-      method: 'GET',
-      redirect: 'manual',
-      headers: {
-        'user-agent': 'ArtioMiningBot/1.0 (+https://artio.local/mining)'
+  try {
+    for (let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount += 1) {
+      const response = await fetch(currentUrl, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: controller.signal,
+        headers: {
+          'user-agent': 'ArtioMiningBot/1.0 (+https://artio.local/mining)'
+        }
+      });
+
+      const isRedirect = response.status >= 300 && response.status < 400;
+      if (!isRedirect) {
+        clearTimeout(timeout);
+        return { response, finalUrl: currentUrl };
       }
-    });
 
-    const isRedirect = response.status >= 300 && response.status < 400;
-    if (!isRedirect) {
-      return { response, finalUrl: currentUrl };
+      const location = response.headers.get('location');
+      if (!location) {
+        throw new Error('redirect_missing_location');
+      }
+
+      const nextUrl = normalizeUrlForComparison(new URL(location, currentUrl).toString());
+      if (!isApprovedBySourcePolicy(nextUrl, sourcePolicy)) {
+        throw new Error('redirect_left_approved_scope');
+      }
+
+      currentUrl = nextUrl;
     }
 
-    const location = response.headers.get('location');
-    if (!location) {
-      throw new Error('redirect_missing_location');
+    throw new Error('redirect_limit_exceeded');
+  } catch (error: unknown) {
+    const timeoutReason = controller.signal.aborted
+      ? String(controller.signal.reason ?? '')
+      : '';
+    if (timeoutReason === 'fetch_timeout') {
+      throw new Error('fetch_timeout');
     }
-
-    const nextUrl = normalizeUrlForComparison(new URL(location, currentUrl).toString());
-    if (!isApprovedBySourcePolicy(nextUrl, sourcePolicy)) {
-      throw new Error('redirect_left_approved_scope');
-    }
-
-    currentUrl = nextUrl;
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-
-  throw new Error('redirect_limit_exceeded');
 }
 
 export async function runFetch(candidateId: string, enqueueNext = true) {
@@ -65,7 +82,7 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
     include: { source: true }
   });
   if (!candidate.sourceId || !candidate.source) {
-    await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: 'missing trusted source relation', candidateId, configVersion: candidate.configVersion } });
+    await prisma.pipelineTelemetry.create({ data: { sourceId: candidate.sourceId, stage: 'fetch', status: 'failure', detail: 'missing trusted source relation', candidateId, configVersion: candidate.configVersion } });
     throw new Error('Missing trusted source relation');
   }
 
@@ -79,7 +96,7 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
   if (!isApprovedBySourcePolicy(normalizedSourceUrl, sourcePolicy)) {
     await markSourceFailure(candidate.sourceId, 'url_not_approved_for_source');
     await persistFetchFailure(candidateId, { canonicalUrl: normalizedSourceUrl, lastError: 'url_not_approved_for_source' });
-    await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: 'URL not approved by source policy', candidateId, configVersion: candidate.configVersion } });
+    await prisma.pipelineTelemetry.create({ data: { sourceId: candidate.sourceId, stage: 'fetch', status: 'failure', detail: 'URL not approved by source policy', candidateId, configVersion: candidate.configVersion } });
     throw new Error('URL is not approved by trusted source policy');
   }
 
@@ -91,12 +108,13 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
     resolvedUrl = result.finalUrl;
   } catch (error: unknown) {
     const reason = error instanceof Error ? error.message : 'fetch_exception';
-    await markSourceFailure(candidate.sourceId, reason.startsWith('redirect_') ? reason : `fetch_exception:${reason}`);
+    const knownFetchFailure = reason.startsWith('redirect_') || reason === 'fetch_timeout';
+    await markSourceFailure(candidate.sourceId, knownFetchFailure ? reason : `fetch_exception:${reason}`);
     await persistFetchFailure(candidateId, {
       canonicalUrl: resolvedUrl,
-      lastError: reason.startsWith('redirect_') ? reason : `fetch_exception:${reason}`
+      lastError: knownFetchFailure ? reason : `fetch_exception:${reason}`
     });
-    await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: JSON.stringify({ sourceId: candidate.sourceId, reason }), candidateId, configVersion: candidate.configVersion } });
+    await prisma.pipelineTelemetry.create({ data: { sourceId: candidate.sourceId, stage: 'fetch', status: 'failure', detail: JSON.stringify({ sourceId: candidate.sourceId, reason }), candidateId, configVersion: candidate.configVersion } });
     throw error;
   }
 
@@ -112,6 +130,7 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
     await prisma.pipelineTelemetry.create({
       data: {
         stage: 'fetch',
+        sourceId: candidate.sourceId,
         status: 'failure',
         detail: 'response_too_large',
         candidateId,
@@ -138,7 +157,7 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
         retryCount: { increment: 1 }
       }
     });
-    await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'failure', detail: JSON.stringify({ sourceId: candidate.sourceId, statusCode: response.status }), candidateId, configVersion: candidate.configVersion } });
+    await prisma.pipelineTelemetry.create({ data: { sourceId: candidate.sourceId, stage: 'fetch', status: 'failure', detail: JSON.stringify({ sourceId: candidate.sourceId, statusCode: response.status }), candidateId, configVersion: candidate.configVersion } });
     throw new Error(`Fetch failed with status ${response.status}`);
   }
 
@@ -156,7 +175,7 @@ export async function runFetch(candidateId: string, enqueueNext = true) {
       lastError: null
     }
   });
-  await prisma.pipelineTelemetry.create({ data: { stage: 'fetch', status: 'success', candidateId, configVersion: candidate.configVersion, detail: JSON.stringify({ sourceId: candidate.sourceId, contentType, statusCode: response.status }) } });
+  await prisma.pipelineTelemetry.create({ data: { sourceId: candidate.sourceId, stage: 'fetch', status: 'success', candidateId, configVersion: candidate.configVersion, detail: JSON.stringify({ sourceId: candidate.sourceId, contentType, statusCode: response.status }) } });
   if (enqueueNext) {
     await enqueueNextStage(extractQueue, 'extract', candidateId);
   }

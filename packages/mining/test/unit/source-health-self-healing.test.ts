@@ -6,7 +6,8 @@ const prismaMock = {
     findUniqueOrThrow: vi.fn()
   },
   pipelineTelemetry: {
-    create: vi.fn()
+    create: vi.fn(),
+    findMany: vi.fn()
   }
 };
 
@@ -15,8 +16,10 @@ vi.mock('../../src/lib/db.js', () => ({ prisma: prismaMock }));
 describe('source health self-healing actions', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    prismaMock.trustedSource.update.mockResolvedValue({ failureCount: 5, trustTier: 4 });
+    prismaMock.trustedSource.findUniqueOrThrow.mockResolvedValue({ id: 'source-1', failureCount: 4, reliabilityCounters: {} });
+    prismaMock.trustedSource.update.mockResolvedValue({ failureCount: 5, trustTier: 4, reliabilityCounters: { parserFailureSpike: 1 } });
     prismaMock.pipelineTelemetry.create.mockResolvedValue({});
+    prismaMock.pipelineTelemetry.findMany.mockResolvedValue([]);
   });
 
   test('auto quarantines on threshold breach and emits mapped telemetry events', async () => {

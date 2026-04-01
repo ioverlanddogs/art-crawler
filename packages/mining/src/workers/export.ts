@@ -11,5 +11,5 @@ export async function runExport(candidateId: string) {
     await markSourceSuccess(c.sourceId);
   }
   await prisma.exportBatch.create({ data: { externalBatchId: result.importBatchId ?? `mining-${candidateId}`, status: 'EXPORTED', configVersion: c.configVersion } });
-  await prisma.pipelineTelemetry.create({ data: { stage: 'export', status: 'success', detail: JSON.stringify({ sourceId: c.sourceId, result }), candidateId, configVersion: c.configVersion } });
+  await prisma.pipelineTelemetry.create({ data: { sourceId: c.sourceId, stage: 'export', status: 'success', detail: JSON.stringify({ sourceId: c.sourceId, result }), candidateId, configVersion: c.configVersion } });
 }

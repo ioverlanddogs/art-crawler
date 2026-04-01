@@ -12,17 +12,91 @@ import {
 const SOURCE_FAILURE_THRESHOLD = 5;
 const SELF_HEAL_STAGE = 'self_heal';
 
-function inferReliabilitySnapshot(reason: string, failureCount: number): SourceReliabilitySnapshot {
-  const snapshot = emptyReliabilitySnapshot(failureCount);
+type ReliabilityCounterKey =
+  | 'parserFailureSpike'
+  | 'duplicateSpike'
+  | 'falsePositiveSpike'
+  | 'oversizedPayloadSpike'
+  | 'rollbackSpike'
+  | 'confidenceCollapse'
+  | 'unhealthySkipRate'
+  | 'retryHotspotCount';
 
-  if (reason.startsWith('extraction_')) snapshot.parserFailureSpike = 1;
-  if (reason.startsWith('dedup_')) snapshot.duplicateSpike = 1;
-  if (reason.includes('false_positive')) snapshot.falsePositiveSpike = 1;
-  if (reason === 'response_too_large') snapshot.oversizedPayloadSpike = 1;
-  if (reason.includes('rollback')) snapshot.rollbackSpike = 1;
-  if (reason.includes('confidence_collapse')) snapshot.confidenceCollapse = 1;
-  if (reason.includes('unhealthy_source_skip')) snapshot.unhealthySkipRate = 1;
-  if (reason.includes('retry_hotspot')) snapshot.retryHotspotCount = 1;
+function spikeKeyForReason(reason: string): ReliabilityCounterKey | null {
+  if (reason.startsWith('extraction_')) return 'parserFailureSpike';
+  if (reason.startsWith('dedup_')) return 'duplicateSpike';
+  if (reason.includes('false_positive')) return 'falsePositiveSpike';
+  if (reason === 'response_too_large') return 'oversizedPayloadSpike';
+  if (reason.includes('rollback')) return 'rollbackSpike';
+  if (reason.includes('confidence_collapse')) return 'confidenceCollapse';
+  if (reason.includes('unhealthy_source_skip')) return 'unhealthySkipRate';
+  if (reason.includes('retry_hotspot')) return 'retryHotspotCount';
+  return null;
+}
+
+function parseReliabilityCounters(value: unknown): Partial<Record<ReliabilityCounterKey, number>> {
+  if (!value || typeof value !== 'object') {
+    return {};
+  }
+
+  const parsed = value as Record<string, unknown>;
+  return {
+    parserFailureSpike: typeof parsed.parserFailureSpike === 'number' ? parsed.parserFailureSpike : 0,
+    duplicateSpike: typeof parsed.duplicateSpike === 'number' ? parsed.duplicateSpike : 0,
+    falsePositiveSpike: typeof parsed.falsePositiveSpike === 'number' ? parsed.falsePositiveSpike : 0,
+    oversizedPayloadSpike: typeof parsed.oversizedPayloadSpike === 'number' ? parsed.oversizedPayloadSpike : 0,
+    rollbackSpike: typeof parsed.rollbackSpike === 'number' ? parsed.rollbackSpike : 0,
+    confidenceCollapse: typeof parsed.confidenceCollapse === 'number' ? parsed.confidenceCollapse : 0,
+    unhealthySkipRate: typeof parsed.unhealthySkipRate === 'number' ? parsed.unhealthySkipRate : 0,
+    retryHotspotCount: typeof parsed.retryHotspotCount === 'number' ? parsed.retryHotspotCount : 0
+  };
+}
+
+function inferReliabilitySnapshot(
+  failureCount: number,
+  reliabilityCounters: Partial<Record<ReliabilityCounterKey, number>>
+): SourceReliabilitySnapshot {
+  const snapshot = emptyReliabilitySnapshot(failureCount);
+  snapshot.parserFailureSpike = reliabilityCounters.parserFailureSpike ?? 0;
+  snapshot.duplicateSpike = reliabilityCounters.duplicateSpike ?? 0;
+  snapshot.falsePositiveSpike = reliabilityCounters.falsePositiveSpike ?? 0;
+  snapshot.oversizedPayloadSpike = reliabilityCounters.oversizedPayloadSpike ?? 0;
+  snapshot.rollbackSpike = reliabilityCounters.rollbackSpike ?? 0;
+  snapshot.confidenceCollapse = reliabilityCounters.confidenceCollapse ?? 0;
+  snapshot.unhealthySkipRate = reliabilityCounters.unhealthySkipRate ?? 0;
+  snapshot.retryHotspotCount = reliabilityCounters.retryHotspotCount ?? 0;
+  return snapshot;
+}
+
+function extractReasonFromTelemetry(detail: string | null): string | null {
+  if (!detail) return null;
+  try {
+    const parsed = JSON.parse(detail) as { reason?: unknown };
+    return typeof parsed.reason === 'string' ? parsed.reason : null;
+  } catch {
+    return detail;
+  }
+}
+
+export async function buildSnapshotFromTelemetry(sourceId: string): Promise<SourceReliabilitySnapshot> {
+  const [source, failures] = await Promise.all([
+    prisma.trustedSource.findUniqueOrThrow({ where: { id: sourceId } }),
+    prisma.pipelineTelemetry.findMany({
+      where: { sourceId, status: 'failure' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+      select: { detail: true }
+    })
+  ]);
+
+  const snapshot = emptyReliabilitySnapshot(source.failureCount);
+  for (const failure of failures) {
+    const reason = extractReasonFromTelemetry(failure.detail);
+    const spikeKey = reason ? spikeKeyForReason(reason) : null;
+    if (spikeKey) {
+      snapshot[spikeKey] += 1;
+    }
+  }
 
   return snapshot;
 }
@@ -30,6 +104,7 @@ function inferReliabilitySnapshot(reason: string, failureCount: number): SourceR
 async function emitSelfHealingEvent(sourceId: string, event: string, detail: Record<string, unknown>) {
   await prisma.pipelineTelemetry.create({
     data: {
+      sourceId,
       stage: SELF_HEAL_STAGE,
       status: 'success',
       configVersion: 1,
@@ -73,6 +148,18 @@ export async function markSourceSuccess(sourceId: string) {
 }
 
 export async function markSourceFailure(sourceId: string, reason: string) {
+  const source = await prisma.trustedSource.findUniqueOrThrow({ where: { id: sourceId } });
+  const spikeKey = spikeKeyForReason(reason);
+  const counters = parseReliabilityCounters(source.reliabilityCounters);
+  const nextCounters = {
+    ...counters,
+    ...(spikeKey
+      ? {
+          [spikeKey]: (counters[spikeKey] ?? 0) + 1
+        }
+      : {})
+  };
+
   const updated = await prisma.trustedSource.update({
     where: { id: sourceId },
     data: {
@@ -80,12 +167,13 @@ export async function markSourceFailure(sourceId: string, reason: string) {
       failureCount: {
         increment: 1
       },
+      reliabilityCounters: nextCounters,
       notes: reason
     }
   });
 
   const fallbackPlan = buildFallbackChainPlan(reason);
-  const snapshot = inferReliabilitySnapshot(reason, updated.failureCount);
+  const snapshot = inferReliabilitySnapshot(updated.failureCount, parseReliabilityCounters(updated.reliabilityCounters));
   const decision = evaluateQuarantineBreach(snapshot);
 
   await logFallbackActions(sourceId, fallbackPlan.chain, reason);
@@ -131,10 +219,10 @@ export async function markSourceFailure(sourceId: string, reason: string) {
 export async function buildSourceHealthReport(sourceId: string) {
   const [source, discoverySuccess, fetchSuccess, extractSuccess, exportYield] = await Promise.all([
     prisma.trustedSource.findUniqueOrThrow({ where: { id: sourceId } }),
-    prisma.pipelineTelemetry.count({ where: { stage: 'discovery', status: 'success', detail: { contains: sourceId } } }),
-    prisma.pipelineTelemetry.count({ where: { stage: 'fetch', status: 'success', detail: { contains: sourceId } } }),
-    prisma.pipelineTelemetry.count({ where: { stage: 'extract', status: 'success', detail: { contains: sourceId } } }),
-    prisma.pipelineTelemetry.count({ where: { stage: 'export', status: 'success', detail: { contains: sourceId } } })
+    prisma.pipelineTelemetry.count({ where: { sourceId, stage: 'discovery', status: 'success' } }),
+    prisma.pipelineTelemetry.count({ where: { sourceId, stage: 'fetch', status: 'success' } }),
+    prisma.pipelineTelemetry.count({ where: { sourceId, stage: 'extract', status: 'success' } }),
+    prisma.pipelineTelemetry.count({ where: { sourceId, stage: 'export', status: 'success' } })
   ]);
 
   return {
@@ -152,7 +240,9 @@ export async function buildSourceHealthReport(sourceId: string) {
 
 export async function attemptSourceRecoveryRelease(sourceId: string) {
   const source = await prisma.trustedSource.findUniqueOrThrow({ where: { id: sourceId } });
-  const readiness = evaluateReleaseReadiness(emptyReliabilitySnapshot(source.failureCount));
+  const snapshot = await buildSnapshotFromTelemetry(sourceId);
+  snapshot.failureCount = source.failureCount;
+  const readiness = evaluateReleaseReadiness(snapshot);
 
   if (!readiness.eligible) {
     await emitSelfHealingEvent(sourceId, 'source_release_blocked', {
