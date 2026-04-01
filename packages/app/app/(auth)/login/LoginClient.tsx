@@ -6,10 +6,20 @@ import { FormEvent, useState } from 'react';
 
 const DEFAULT_CALLBACK_URL = '/dashboard';
 
+export function isSafeCallbackUrl(url: string): boolean {
+  if (!url || !url.startsWith('/')) return false;
+  if (url.startsWith('//')) return false;
+  if (url.startsWith('/\\')) return false;
+  return true;
+}
+
 function resolveErrorMessage(error: string | null): string | null {
   if (!error) return null;
   if (error === 'CredentialsSignin') {
     return 'Invalid email or password.';
+  }
+  if (error === 'AccessDenied') {
+    return 'Access denied. Contact an administrator if you believe this is an error.';
   }
   return 'Unable to sign in. Please try again.';
 }
@@ -22,7 +32,8 @@ export default function LoginClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
-  const callbackUrl = searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL;
+  const rawCallbackUrl = searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL;
+  const callbackUrl = isSafeCallbackUrl(rawCallbackUrl) ? rawCallbackUrl : DEFAULT_CALLBACK_URL;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

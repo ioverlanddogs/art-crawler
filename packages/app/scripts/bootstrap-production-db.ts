@@ -55,7 +55,6 @@ async function main() {
   const dryRun = hasFlag('--dry-run');
   const skipAdmin = hasFlag('--skip-admin');
 
-  const scriptPath = resolve(process.cwd(), 'scripts/create-admin.ts');
 
   console.log('1/3 Checking Prisma migration status...');
   const status = runWithCapturedOutput('npx', ['prisma', 'migrate', 'status', '--schema', 'prisma/schema.prisma']);
@@ -74,22 +73,17 @@ async function main() {
   }
 
   if (skipAdmin) {
-    console.log('3/3 Skipping admin creation because --skip-admin was provided.');
+    console.log('3/3 Skipping admin upsert because --skip-admin was provided.');
   } else if (!adminEmail || !adminPassword) {
-    console.log('3/3 Skipping admin creation (admin credentials not provided).');
+    console.log('3/3 Skipping admin upsert (BOOTSTRAP_ADMIN_EMAIL or BOOTSTRAP_ADMIN_PASSWORD not provided).');
   } else {
-    const createAdminArgs = ['--import', 'tsx', scriptPath, '--email', adminEmail, '--password', adminPassword];
-
-    if (adminName) {
-      createAdminArgs.push('--name', adminName);
-    }
-
-    if (dryRun) {
-      createAdminArgs.push('--dry-run');
-    }
-
-    console.log('3/3 Ensuring initial ACTIVE admin user exists...');
-    run('node', createAdminArgs);
+    const seedScriptPath = resolve(process.cwd(), 'scripts/seed-permanent-admin.ts');
+    console.log('3/3 Upserting permanent admin user (always writes password hash)...');
+    run('node', ['--import', 'tsx', seedScriptPath], {
+      BOOTSTRAP_ADMIN_EMAIL: adminEmail,
+      BOOTSTRAP_ADMIN_PASSWORD: adminPassword,
+      ...(adminName ? { BOOTSTRAP_ADMIN_NAME: adminName } : {})
+    } as unknown as NodeJS.ProcessEnv);
   }
 
   console.log('Bootstrap completed successfully.');
