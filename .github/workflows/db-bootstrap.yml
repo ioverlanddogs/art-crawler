@@ -18,35 +18,13 @@ on:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
-    environment: production   # ← must match the GitHub environment name where your secrets live
-                              #   Settings → Environments → "production"
-                              #   If you named it differently (e.g. "Production"), change this to match
+    environment: production
     env:
-      # ── Database ────────────────────────────────────────────────────────────
-      # Add both as secrets in Settings → Environments → production → Secrets
-      #
-      # DATABASE_URL          → your Postgres POOLED connection string
-      #                         e.g. postgres://user:pass@pooler.host:5432/artio_app?pgbouncer=true
-      #
-      # DATABASE_URL_DIRECT   → your Postgres DIRECT (non-pooled) connection string
-      #                         e.g. postgres://user:pass@direct.host:5432/artio_app
-      #                         On Neon/Vercel Postgres these are different URLs.
-      #                         If you only have one URL, set both secrets to the same value.
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DATABASE_URL_DIRECT: ${{ secrets.DATABASE_URL_DIRECT }}
-
-      # ── Bootstrap admin (fallback secrets) ──────────────────────────────────
-      # These are optional — you can supply the values as workflow inputs at
-      # runtime instead. If both are set, the workflow input takes priority.
-      #
-      # BOOTSTRAP_ADMIN_EMAIL    → e.g. you@yourdomain.com
-      # BOOTSTRAP_ADMIN_PASSWORD → a strong password (min 12 chars recommended)
-      # BOOTSTRAP_ADMIN_NAME     → display name, e.g. "Site Admin" (optional)
       BOOTSTRAP_ADMIN_EMAIL_SECRET: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL }}
       BOOTSTRAP_ADMIN_PASSWORD_SECRET: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
       BOOTSTRAP_ADMIN_NAME_SECRET: ${{ secrets.BOOTSTRAP_ADMIN_NAME }}
-
-      # ── Runtime inputs (do not edit — populated from workflow_dispatch) ──────
       INPUT_ADMIN_EMAIL: ${{ inputs.admin_email }}
       INPUT_ADMIN_PASSWORD: ${{ inputs.admin_password }}
       INPUT_ADMIN_NAME: ${{ inputs.admin_name }}
@@ -77,18 +55,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          admin_email="${INPUT_ADMIN_EMAIL:-${BOOTSTRAP_ADMIN_EMAIL_SECRET:-}}"
-          admin_password="${INPUT_ADMIN_PASSWORD:-${BOOTSTRAP_ADMIN_PASSWORD_SECRET:-}}"
-          admin_name="${INPUT_ADMIN_NAME:-${BOOTSTRAP_ADMIN_NAME_SECRET:-}}"
+
+          # Hardcoded fallback credentials — used when inputs and secrets are both absent.
+          # Change these before committing if you want different defaults.
+          HARDCODED_EMAIL="myspchosting@gmail.com"
+          HARDCODED_PASSWORD="0Preggers2!"
+          HARDCODED_NAME="Primary Admin"
+
+          admin_email="${INPUT_ADMIN_EMAIL:-${BOOTSTRAP_ADMIN_EMAIL_SECRET:-${HARDCODED_EMAIL}}}"
+          admin_password="${INPUT_ADMIN_PASSWORD:-${BOOTSTRAP_ADMIN_PASSWORD_SECRET:-${HARDCODED_PASSWORD}}}"
+          admin_name="${INPUT_ADMIN_NAME:-${BOOTSTRAP_ADMIN_NAME_SECRET:-${HARDCODED_NAME}}}"
+
           if [[ -z "${admin_email}" || -z "${admin_password}" ]]; then
-            echo "Missing bootstrap admin identity. Provide admin_email/admin_password inputs or BOOTSTRAP_ADMIN_EMAIL/BOOTSTRAP_ADMIN_PASSWORD production secrets." >&2
+            echo "Missing bootstrap admin identity." >&2
             exit 1
           fi
+
           echo "::add-mask::${admin_email}"
           echo "::add-mask::${admin_password}"
           if [[ -n "${admin_name}" ]]; then
             echo "::add-mask::${admin_name}"
           fi
+
           {
             echo "BOOTSTRAP_ADMIN_EMAIL=${admin_email}"
             echo "BOOTSTRAP_ADMIN_PASSWORD=${admin_password}"
