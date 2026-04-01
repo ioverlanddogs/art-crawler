@@ -35,3 +35,14 @@ export function getGoogleClientId(): string | undefined {
 export function getGoogleClientSecret(): string | undefined {
   return process.env.GOOGLE_CLIENT_SECRET;
 }
+
+/**
+ * Optional single approved Google account for env-var-gated sign-in.
+ * Set GOOGLE_APPROVED_EMAIL in your deployment environment (e.g. Vercel).
+ * When set, this email can sign in via Google without a pre-existing DB invite.
+ * The AdminUser row is upserted automatically on first sign-in.
+ */
+export function getApprovedGoogleEmail(): string | undefined {
+  const raw = process.env.GOOGLE_APPROVED_EMAIL;
+  return raw ? raw.trim().toLowerCase() : undefined;
+}

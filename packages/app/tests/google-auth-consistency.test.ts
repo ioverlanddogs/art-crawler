@@ -3,7 +3,8 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const prismaMock = {
   adminUser: {
     findFirst: vi.fn(),
-    update: vi.fn()
+    update: vi.fn(),
+    upsert: vi.fn()
   },
   account: {
     findUnique: vi.fn(),
@@ -28,7 +29,8 @@ vi.mock('@/lib/db', () => ({ prisma: prismaMock }));
 vi.mock('@/lib/runtime-env', () => ({ isDatabaseRuntimeReady: runtimeMock }));
 vi.mock('@/lib/env', () => ({
   getGoogleClientId: () => 'google-client-id',
-  getGoogleClientSecret: () => 'google-client-secret'
+  getGoogleClientSecret: () => 'google-client-secret',
+  getApprovedGoogleEmail: () => process.env.GOOGLE_APPROVED_EMAIL?.trim().toLowerCase()
 }));
 
 describe('google auth consistency', () => {
@@ -180,4 +182,73 @@ describe('google auth consistency', () => {
 
     expect(result).toBe(false);
   });
+
+  test('allows sign-in for env-approved Google email and upserts AdminUser', async () => {
+    process.env.GOOGLE_APPROVED_EMAIL = 'approved@example.com';
+    prismaMock.adminUser.upsert = vi.fn().mockResolvedValueOnce({
+      id: 'admin-approved',
+      email: 'approved@example.com',
+      status: 'ACTIVE'
+    });
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'approved@example.com', name: 'Approved Admin' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(true);
+    expect(prismaMock.adminUser.upsert).toHaveBeenCalledWith({
+      where: { email: 'approved@example.com' },
+      create: expect.objectContaining({ email: 'approved@example.com', role: 'admin', status: 'ACTIVE' }),
+      update: expect.objectContaining({ status: 'ACTIVE' })
+    });
+    expect(prismaMock.adminUser.findFirst).not.toHaveBeenCalled();
+
+    delete process.env.GOOGLE_APPROVED_EMAIL;
+  });
+
+  test('normalises approved email before comparison (trims and lowercases)', async () => {
+    process.env.GOOGLE_APPROVED_EMAIL = '  APPROVED@EXAMPLE.COM  ';
+    prismaMock.adminUser.upsert = vi.fn().mockResolvedValueOnce({ id: 'admin-approved' });
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'approved@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(true);
+    delete process.env.GOOGLE_APPROVED_EMAIL;
+  });
+
+  test('falls through to DB row check when email does not match approved email', async () => {
+    process.env.GOOGLE_APPROVED_EMAIL = 'other@example.com';
+    prismaMock.adminUser.findFirst.mockResolvedValueOnce({ id: 'admin-1', status: 'ACTIVE' });
+    prismaMock.adminUser.update.mockResolvedValueOnce({ id: 'admin-1' });
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'different@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(true);
+    expect(prismaMock.adminUser.findFirst).toHaveBeenCalled();
+    delete process.env.GOOGLE_APPROVED_EMAIL;
+  });
+
+  test('rejects Google sign-in when GOOGLE_APPROVED_EMAIL is unset and no DB row exists', async () => {
+    delete process.env.GOOGLE_APPROVED_EMAIL;
+    prismaMock.adminUser.findFirst.mockResolvedValueOnce(null);
+
+    const { authOptions } = await import('@/lib/auth');
+    const result = await authOptions.callbacks!.signIn!({
+      user: { email: 'nobody@example.com' },
+      account: { provider: 'google', type: 'oauth' }
+    } as never);
+
+    expect(result).toBe(false);
+  });
+
 });
