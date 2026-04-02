@@ -106,45 +106,60 @@ export const authOptions: NextAuthOptions = {
 
       // Google-first policy: block all non-credentials providers except Google.
       if (account?.provider !== 'google') return false;
-      if (!databaseReady || !nextAuthSecretReady || !user.email) return false;
 
-      const email = normaliseEmail(user.email);
+      // Re-evaluate readiness at call time rather than trusting module-level constants
+      // (module-level constants can be stale if env vars weren't present at cold start)
+      const isDbReady = isDatabaseRuntimeReady();
+      const isSecretReady = typeof process.env.NEXTAUTH_SECRET === 'string' && process.env.NEXTAUTH_SECRET.trim().length > 0;
 
-      // Env-var approved email: upsert AdminUser on first sign-in, no invite required
-      const approvedEmail = getApprovedGoogleEmail();
-      if (approvedEmail && email === approvedEmail) {
-        await prisma.adminUser.upsert({
-          where: { email },
-          create: {
-            email,
-            name: user.name ?? null,
-            role: 'admin',
-            status: 'ACTIVE'
-          },
-          update: {
-            status: 'ACTIVE',
-            lastLoginAt: new Date()
-          }
-        });
-        return true;
-      }
-
-      // Invite/DB-backed flow: email must match a pre-existing ACTIVE AdminUser row.
-      const adminUser = await prisma.adminUser.findFirst({
-        where: { email: { equals: email, mode: 'insensitive' } },
-        select: { id: true, status: true }
-      });
-
-      if (!adminUser || adminUser.status !== 'ACTIVE') {
+      if (!isDbReady || !isSecretReady || !user.email) {
+        console.error('[auth] signIn blocked — isDbReady:', isDbReady, 'isSecretReady:', isSecretReady, 'hasEmail:', Boolean(user.email));
         return false;
       }
 
-      await prisma.adminUser.update({
-        where: { id: adminUser.id },
-        data: { lastLoginAt: new Date() }
-      });
+      const email = normaliseEmail(user.email);
 
-      return true;
+      try {
+        // Env-var approved email: upsert AdminUser on first sign-in, no invite required
+        const approvedEmail = getApprovedGoogleEmail();
+        if (approvedEmail && email === approvedEmail) {
+          await prisma.adminUser.upsert({
+            where: { email },
+            create: {
+              email,
+              name: user.name ?? null,
+              role: 'admin',
+              status: 'ACTIVE'
+            },
+            update: {
+              status: 'ACTIVE',
+              lastLoginAt: new Date()
+            }
+          });
+          return true;
+        }
+
+        // Invite/DB-backed flow: email must match a pre-existing ACTIVE AdminUser row.
+        const adminUser = await prisma.adminUser.findFirst({
+          where: { email: { equals: email, mode: 'insensitive' } },
+          select: { id: true, status: true }
+        });
+
+        if (!adminUser || adminUser.status !== 'ACTIVE') {
+          console.error('[auth] signIn denied — no ACTIVE AdminUser row for email:', email);
+          return false;
+        }
+
+        await prisma.adminUser.update({
+          where: { id: adminUser.id },
+          data: { lastLoginAt: new Date() }
+        });
+
+        return true;
+      } catch (error: unknown) {
+        console.error('[auth] signIn callback threw:', error instanceof Error ? error.message : String(error));
+        return false;
+      }
     },
     async jwt({ token, user }) {
       if (!databaseReady) return token;
