@@ -509,7 +509,7 @@ a { color: inherit; text-decoration: none; }
   align-items: start;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 900px) {
   .workbench-grid {
     grid-template-columns: 1fr;
   }

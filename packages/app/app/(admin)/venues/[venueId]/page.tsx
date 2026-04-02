@@ -104,6 +104,18 @@ export default async function VenueDetailPage({
         <StatCard label="Enrichment runs" value={enrichmentRuns.length} />
       </div>
 
+      <SectionCard
+        title="Enrichment"
+        subtitle="Run the inspector against sub-pages of this venue to collect artists, artworks, and events."
+      >
+        <VenueEnrichClient
+          venueId={params.venueId}
+          venueName={venue.name}
+          venueDomain={venue.domain}
+          venueWebsiteUrl={venue.websiteUrl}
+        />
+      </SectionCard>
+
       <SectionCard title="Venue details">
         <table className="data-table">
           <tbody>
@@ -118,18 +130,6 @@ export default async function VenueDetailPage({
             {venue.region ? <tr><th>Region</th><td>{venue.region}</td></tr> : null}
           </tbody>
         </table>
-      </SectionCard>
-
-      <SectionCard
-        title="Enrichment"
-        subtitle="Run the inspector against sub-pages of this venue to collect artists, artworks, and events."
-      >
-        <VenueEnrichClient
-          venueId={params.venueId}
-          venueName={venue.name}
-          venueDomain={venue.domain}
-          venueWebsiteUrl={venue.websiteUrl}
-        />
       </SectionCard>
 
       {extractedArtists.length > 0 ? (
