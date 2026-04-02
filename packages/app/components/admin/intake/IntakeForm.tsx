@@ -11,6 +11,7 @@ export function IntakeForm({ onSuccess }: IntakeFormProps) {
   const [sourceUrl, setSourceUrl] = useState('');
   const [sourceLabel, setSourceLabel] = useState('');
   const [notes, setNotes] = useState('');
+  const [mode, setMode] = useState<string>('events');
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -41,7 +42,8 @@ export function IntakeForm({ onSuccess }: IntakeFormProps) {
         body: JSON.stringify({
           sourceUrl,
           sourceLabel: sourceLabel.trim() || undefined,
-          notes: notes.trim() || undefined
+          notes: notes.trim() || undefined,
+          recordTypeOverride: mode
         })
       });
 
@@ -89,6 +91,29 @@ export function IntakeForm({ onSuccess }: IntakeFormProps) {
       </label>
 
       {errorMessage ? <p className="dialog-error">{errorMessage}</p> : null}
+
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <label style={{ fontSize: 13, fontWeight: 500 }}>Extract as</label>
+        <select
+          value={mode}
+          onChange={(e) => setMode(e.target.value)}
+          style={{
+            padding: '8px 10px',
+            fontSize: 14,
+            borderRadius: 4,
+            border: '1px solid var(--border)',
+            background: 'var(--surface)'
+          }}
+        >
+          <option value="events">Events / What's On</option>
+          <option value="artists">Artists</option>
+          <option value="artworks">Artworks</option>
+          <option value="gallery">Gallery / Venue info</option>
+          <option value="auto">Auto-detect</option>
+        </select>
+      </div>
+
 
       <div className="filters-row">
         <ActionButton onClick={submit} disabled={!sourceUrl.trim()} submitting={submitting}>

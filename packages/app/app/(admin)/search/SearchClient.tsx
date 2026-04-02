@@ -20,6 +20,7 @@ export default function SearchClient() {
   const [query, setQuery] = useState('');
   const [maxResults, setMaxResults] = useState(10);
   const [searching, setSearching] = useState(false);
+  const [extractMode, setExtractMode] = useState<string>('events');
   const [ingesting, setIngesting] = useState(false);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -72,7 +73,7 @@ export default function SearchClient() {
       const res = await fetch('/api/admin/search/ingest', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ urls })
+        body: JSON.stringify({ urls, mode: extractMode })
       });
       const data = await res.json();
       setIngestSummary(data);
@@ -131,6 +132,24 @@ export default function SearchClient() {
             style={{ width: '100%', padding: '8px 12px', fontSize: 14, borderRadius: 6, border: '1px solid var(--border)' }}
             disabled={searching}
           />
+        </div>
+
+        <div style={{ minWidth: 160 }}>
+          <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6 }}>
+            Extract as
+          </label>
+          <select
+            value={extractMode}
+            onChange={(e) => setExtractMode(e.target.value)}
+            style={{ width: '100%', padding: '8px 10px', fontSize: 14, borderRadius: 6, border: '1px solid var(--border)' }}
+            disabled={searching}
+          >
+            <option value="events">Events / What's On</option>
+            <option value="artists">Artists</option>
+            <option value="artworks">Artworks</option>
+            <option value="gallery">Gallery / Venue info</option>
+            <option value="auto">Auto-detect</option>
+          </select>
         </div>
         <button
           type="submit"
