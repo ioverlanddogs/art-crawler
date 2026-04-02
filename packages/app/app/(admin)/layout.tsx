@@ -34,13 +34,14 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       items: [
         { href: '/dashboard', label: 'Dashboard', roles: ['admin', 'operator', 'moderator'] },
         { href: '/intake', label: 'Intake', roles: ['admin', 'operator', 'moderator'] },
+        { href: '/search', label: 'Search', roles: ['admin', 'operator', 'moderator'] },
+        { href: '/moderation', label: 'Moderation Queue', badgeCount: pendingCount, roles: ['admin', 'moderator'] },
+        { href: '/publish', label: 'Publish', roles: ['admin', 'operator', 'moderator'] },
+        { href: '/duplicates', label: 'Duplicates', roles: ['admin', 'operator', 'moderator'] },
         { href: '/batch-intake', label: 'Batch Intake', roles: ['admin', 'operator', 'moderator'] },
         { href: '/batch-review', label: 'Batch Review', roles: ['admin', 'operator', 'moderator'] },
-        { href: '/moderation', label: 'Moderation Queue', badgeCount: pendingCount, roles: ['admin', 'moderator'] },
-        { href: '/duplicates', label: 'Duplicates', roles: ['admin', 'operator', 'moderator'] },
-        { href: '/publish', label: 'Publish', roles: ['admin', 'operator', 'moderator'] },
-        { href: '/audit', label: 'Audit', roles: ['admin', 'operator', 'moderator', 'viewer'] },
         { href: '/pipeline', label: 'Pipeline', roles: ['admin', 'operator'] },
+        { href: '/audit', label: 'Audit', roles: ['admin', 'operator', 'moderator', 'viewer'] },
         { href: '/operations', label: 'Reviewer Ops', roles: ['admin', 'operator', 'moderator'] }
       ]
     },
@@ -51,8 +52,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         { href: '/recovery-studio', label: 'Recovery Studio', roles: ['admin', 'operator'] },
         { href: '/self-healing', label: 'Self-healing', roles: ['admin', 'operator'] },
         { href: '/data', label: 'Data Quality', roles: ['admin', 'operator'] },
-        { href: '/discovery', label: 'Discovery', roles: ['admin', 'operator'] },
-        { href: '/search', label: 'Search', roles: ['admin', 'operator', 'moderator'] }
+        { href: '/discovery', label: 'Discovery', roles: ['admin', 'operator'] }
       ]
     },
     {
