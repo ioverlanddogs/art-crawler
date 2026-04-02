@@ -12,16 +12,25 @@ afterEach(() => {
 });
 
 describe('extractFields', () => {
-  test('falls back to stub when ANTHROPIC_API_KEY is missing', async () => {
+  test('falls back to stub when no provider keys are configured', async () => {
     delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.OPENAI_API_KEY;
+    delete process.env.GEMINI_API_KEY;
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
+    const prismaMock = {
+      siteSetting: { findUnique: vi.fn().mockResolvedValue(null) }
+    };
+
     const { extractFields } = await import('@/lib/intake/extract-fields');
-    const result = await extractFields({ extractedText: 'hello world', sourceUrl: 'https://example.com' });
+    const result = await extractFields(
+      { extractedText: 'hello world', sourceUrl: 'https://example.com' },
+      prismaMock as never
+    );
 
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(result.warningsJson).toContain('anthropic_api_key_missing');
+    expect(result.warningsJson).toContain('no_api_key_configured');
     expect(result.modelVersion).toBe('stub-v0');
   });
 
@@ -44,8 +53,15 @@ describe('extractFields', () => {
     );
     vi.stubGlobal('fetch', fetchMock);
 
+    const prismaMock = {
+      siteSetting: { findUnique: vi.fn().mockResolvedValue(null) }
+    };
+
     const { extractFields } = await import('@/lib/intake/extract-fields');
-    const result = await extractFields({ extractedText: 'hello world', sourceUrl: 'https://example.com' });
+    const result = await extractFields(
+      { extractedText: 'hello world', sourceUrl: 'https://example.com' },
+      prismaMock as never
+    );
 
     expect(result.modelVersion).toBe('claude-haiku-4-5-20251001');
     expect(result.parserVersion).toBe('prompt-v1');
@@ -54,7 +70,7 @@ describe('extractFields', () => {
     expect(result.evidenceJson).toEqual({ title: ['Sample sentence'] });
   });
 
-  test('falls back to stub with ai_parse_error when JSON is malformed', async () => {
+  test('falls back to stub with no_api_key_configured when JSON is malformed', async () => {
     process.env.ANTHROPIC_API_KEY = 'test-key';
 
     vi.stubGlobal(
@@ -69,10 +85,17 @@ describe('extractFields', () => {
       )
     );
 
-    const { extractFields } = await import('@/lib/intake/extract-fields');
-    const result = await extractFields({ extractedText: 'hello world', sourceUrl: 'https://example.com' });
+    const prismaMock = {
+      siteSetting: { findUnique: vi.fn().mockResolvedValue(null) }
+    };
 
-    expect(result.warningsJson).toContain('ai_parse_error');
+    const { extractFields } = await import('@/lib/intake/extract-fields');
+    const result = await extractFields(
+      { extractedText: 'hello world', sourceUrl: 'https://example.com' },
+      prismaMock as never
+    );
+
+    expect(result.warningsJson).toContain('no_api_key_configured');
     expect(result.modelVersion).toBe('stub-v0');
   });
 
@@ -80,10 +103,17 @@ describe('extractFields', () => {
     process.env.ANTHROPIC_API_KEY = 'test-key';
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('upstream error', { status: 500 })));
 
-    const { extractFields } = await import('@/lib/intake/extract-fields');
-    const result = await extractFields({ extractedText: 'hello world', sourceUrl: 'https://example.com' });
+    const prismaMock = {
+      siteSetting: { findUnique: vi.fn().mockResolvedValue(null) }
+    };
 
-    expect(result.warningsJson).toContain('ai_parse_error');
+    const { extractFields } = await import('@/lib/intake/extract-fields');
+    const result = await extractFields(
+      { extractedText: 'hello world', sourceUrl: 'https://example.com' },
+      prismaMock as never
+    );
+
+    expect(result.warningsJson).toContain('no_api_key_configured');
     expect(result.modelVersion).toBe('stub-v0');
   });
 });

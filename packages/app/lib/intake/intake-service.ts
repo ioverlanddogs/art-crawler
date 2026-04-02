@@ -97,10 +97,13 @@ export async function runIntake(
 
     let extractionResult: Awaited<ReturnType<typeof extractFields>>;
     try {
-      extractionResult = await extractFields({
-        extractedText: fetchResult.extractedText,
-        sourceUrl: fetchResult.finalUrl
-      });
+      extractionResult = await extractFields(
+        {
+          extractedText: fetchResult.extractedText,
+          sourceUrl: fetchResult.finalUrl
+        },
+        prisma
+      );
     } catch (error: unknown) {
       await prisma.pipelineTelemetry.create({
         data: {
@@ -141,7 +144,7 @@ export async function runIntake(
         metadata: {
           inputTokens: usage?.inputTokens,
           outputTokens: usage?.outputTokens,
-          model: 'claude-haiku-4-5-20251001'
+          model: extractionResult.modelVersion
         }
       }
     });
