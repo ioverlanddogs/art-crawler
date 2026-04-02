@@ -199,9 +199,18 @@ model Venue {
   region      String?
   latitude    Float?
   longitude   Float?
+  address     String?
+  phone       String?
+  email       String?
+  bio         String?
+  openingHours String?
+  websiteUrl  String?
+  instagramUrl String?
+  imageUrl    String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   events      Event[]
+  artworks    Artwork[]
   ingestRuns  IngestRun[]
   extractedEvents IngestExtractedEvent[]
 }
@@ -212,8 +221,14 @@ model Artist {
   slug        String?   @unique
   bio         String?
   imageUrl    String?
+  nationality String?
+  birthYear   Int?
+  medium      String?
+  websiteUrl  String?
+  instagramUrl String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  artworks    Artwork[]
 }
 
 model Artwork {
@@ -222,8 +237,19 @@ model Artwork {
   slug        String?   @unique
   description String?
   imageUrl    String?
+  artistId    String?
+  venueId     String?
+  medium      String?
+  year        Int?
+  price       String?
+  availability String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  artist      Artist?   @relation(fields: [artistId], references: [id], onDelete: SetNull)
+  venue       Venue?    @relation(fields: [venueId], references: [id], onDelete: SetNull)
+
+  @@index([artistId])
+  @@index([venueId])
 }
 
 model Event {
