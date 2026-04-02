@@ -107,6 +107,23 @@ export default function InspectClient() {
   const [selectedMode, setSelectedMode] = useState<string>('events');
   const [ingesting, setIngesting] = useState(false);
   const [ingestResult, setIngestResult] = useState<{ jobId: string } | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractionPreview, setExtractionPreview] = useState<{
+    extractedFields: Record<string, unknown>;
+    confidence: Record<string, number>;
+    evidence: Record<string, unknown>;
+    warnings: string[];
+    modelVersion: string;
+    parserVersion: string;
+    mode: string;
+  } | null>(null);
+  const [editedFields, setEditedFields] = useState<Record<string, string>>({});
+  const [committing, setCommitting] = useState(false);
+  const [commitResult, setCommitResult] = useState<{
+    ingestionJobId: string;
+    proposedChangeSetId: string;
+    reviewStatus: string;
+  } | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -272,6 +289,94 @@ export default function InspectClient() {
       setChatError('Network error during ingest.');
     } finally {
       setIngesting(false);
+    }
+  }
+
+  async function handleExtract() {
+    if (!fetchResult || extracting) return;
+    setExtracting(true);
+    setExtractionPreview(null);
+    setEditedFields({});
+    setCommitResult(null);
+
+    try {
+      const res = await fetch('/api/admin/inspect/extract', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          url: fetchResult.url,
+          extractedText: fetchResult.extractedText,
+          mode: selectedMode,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setChatError(data?.error ?? 'Extraction preview failed.');
+        return;
+      }
+      setExtractionPreview(data);
+      const initial: Record<string, string> = {};
+      for (const [key, value] of Object.entries(data.extractedFields as Record<string, unknown>)) {
+        if (Array.isArray(value)) {
+          initial[key] = value.join(', ');
+        } else if (value !== null && value !== undefined) {
+          initial[key] = String(value);
+        } else {
+          initial[key] = '';
+        }
+      }
+      setEditedFields(initial);
+    } catch {
+      setChatError('Network error during extraction preview.');
+    } finally {
+      setExtracting(false);
+    }
+  }
+
+  async function handleCommit() {
+    if (!fetchResult || !extractionPreview || committing) return;
+    setCommitting(true);
+    setCommitResult(null);
+
+    const fields: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(editedFields)) {
+      const trimmed = value.trim();
+      if (trimmed === '') continue;
+      const arrayFields = ['artistNames', 'representativeWorks', 'currentExhibitions'];
+      if (arrayFields.includes(key)) {
+        fields[key] = trimmed
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+      } else {
+        fields[key] = trimmed;
+      }
+    }
+
+    try {
+      const res = await fetch('/api/admin/inspect/commit', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          url: fetchResult.url,
+          mode: selectedMode,
+          modelVersion: extractionPreview.modelVersion,
+          fields,
+          confidence: extractionPreview.confidence,
+          evidence: extractionPreview.evidence,
+          humanReviewed: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setChatError(data?.error ?? 'Commit failed.');
+        return;
+      }
+      setCommitResult(data);
+    } catch {
+      setChatError('Network error during commit.');
+    } finally {
+      setCommitting(false);
     }
   }
 
@@ -455,43 +560,210 @@ export default function InspectClient() {
         <section className="section-card">
           <header className="section-card-header">
             <div>
-              <h2>Push to intake</h2>
-              <p>Send this URL through the extraction pipeline with the selected mode.</p>
+              <h2>Commit to pipeline</h2>
+              <p>Choose how to send this URL through the pipeline.</p>
             </div>
           </header>
 
-          {ingestResult ? (
-            <div style={{ padding: '12px 0', fontSize: 14 }}>
-              <p style={{ color: 'var(--success)', fontWeight: 500 }}>
-                ✓ Queued successfully. <a href={`/intake/${ingestResult.jobId}`} style={{ color: 'var(--primary)' }}>View intake job →</a>
-              </p>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20, borderBottom: '1px solid var(--border)', paddingBottom: 12 }}>
+            <div>
+              <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Extract as</label>
+              <select
+                value={selectedMode}
+                onChange={(e) => {
+                  setSelectedMode(e.target.value);
+                  setExtractionPreview(null);
+                  setEditedFields({});
+                  setCommitResult(null);
+                }}
+                style={{
+                  padding: '7px 10px',
+                  fontSize: 14,
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                }}
+              >
+                {MODES.map((m) => (
+                  <option key={m.value} value={m.value}>
+                    {m.label}
+                  </option>
+                ))}
+              </select>
             </div>
-          ) : (
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', paddingTop: 4 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 500, marginBottom: 6 }}>Extract as</label>
-                <select
-                  value={selectedMode}
-                  onChange={(e) => setSelectedMode(e.target.value)}
+          </div>
+
+          {!extractionPreview && !commitResult ? (
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 200,
+                  padding: '14px 16px',
+                  borderRadius: 6,
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                }}
+              >
+                <p style={{ fontWeight: 500, fontSize: 14, marginBottom: 4 }}>Quick push</p>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+                  Send directly to intake pipeline. AI will extract fields automatically.
+                </p>
+                {ingestResult ? (
+                  <p style={{ color: 'var(--success)', fontSize: 13, fontWeight: 500 }}>
+                    ✓ Queued.{' '}
+                    <a href={`/intake/${ingestResult.jobId}`} style={{ color: 'var(--primary)' }}>
+                      View intake job →
+                    </a>
+                  </p>
+                ) : (
+                  <button
+                    onClick={handleIngest}
+                    disabled={ingesting}
+                    style={{
+                      padding: '7px 16px',
+                      fontSize: 13,
+                      borderRadius: 6,
+                      border: 'none',
+                      background: 'var(--primary)',
+                      color: '#fff',
+                      cursor: ingesting ? 'not-allowed' : 'pointer',
+                      opacity: ingesting ? 0.6 : 1,
+                    }}
+                  >
+                    {ingesting ? 'Pushing…' : 'Push to intake →'}
+                  </button>
+                )}
+              </div>
+
+              <div
+                style={{
+                  flex: 1,
+                  minWidth: 200,
+                  padding: '14px 16px',
+                  borderRadius: 6,
+                  border: '1px solid var(--primary)',
+                  background: 'var(--primary-soft)',
+                }}
+              >
+                <p style={{ fontWeight: 500, fontSize: 14, marginBottom: 4 }}>Preview and edit fields</p>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 12 }}>
+                  See what the AI extracts, edit any fields, then commit. Recommended for trusted sources.
+                </p>
+                <button
+                  onClick={handleExtract}
+                  disabled={extracting}
                   style={{
-                    padding: '7px 10px',
-                    fontSize: 14,
+                    padding: '7px 16px',
+                    fontSize: 13,
                     borderRadius: 6,
-                    border: '1px solid var(--border)',
-                    background: 'var(--surface)',
+                    border: 'none',
+                    background: 'var(--primary)',
+                    color: '#fff',
+                    cursor: extracting ? 'not-allowed' : 'pointer',
+                    opacity: extracting ? 0.6 : 1,
                   }}
                 >
-                  {MODES.map((m) => (
-                    <option key={m.value} value={m.value}>
-                      {m.label}
-                    </option>
-                  ))}
-                </select>
+                  {extracting ? 'Extracting…' : 'Preview extraction →'}
+                </button>
               </div>
-              <div style={{ paddingTop: 22 }}>
+            </div>
+          ) : null}
+
+          {extractionPreview && !commitResult ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '8px 12px',
+                  background: 'var(--surface-muted)',
+                  borderRadius: 6,
+                  fontSize: 13,
+                }}
+              >
+                <span>
+                  <strong>Model:</strong> {extractionPreview.modelVersion}
+                  {' · '}
+                  <strong>Mode:</strong> {extractionPreview.mode}
+                  {extractionPreview.warnings.length > 0 ? ` · ⚠ ${extractionPreview.warnings.join(', ')}` : null}
+                </span>
                 <button
-                  onClick={handleIngest}
-                  disabled={ingesting}
+                  onClick={() => {
+                    setExtractionPreview(null);
+                    setEditedFields({});
+                  }}
+                  style={{
+                    fontSize: 12,
+                    padding: '3px 10px',
+                    borderRadius: 4,
+                    border: '1px solid var(--border)',
+                    background: 'var(--surface)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  ← Back
+                </button>
+              </div>
+
+              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                Review and edit the extracted fields below. Changes are committed as-is — what you see is what enters the
+                pipeline.
+              </p>
+
+              <div style={{ display: 'grid', gap: 12 }}>
+                {Object.entries(editedFields).map(([key, value]) => {
+                  const conf = extractionPreview.confidence[key];
+                  const confColor =
+                    conf === undefined
+                      ? 'var(--text-muted)'
+                      : conf >= 0.7
+                        ? 'var(--success)'
+                        : conf >= 0.4
+                          ? 'var(--warning)'
+                          : 'var(--danger)';
+                  return (
+                    <div key={key}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                        <label style={{ fontSize: 13, fontWeight: 500 }}>{key}</label>
+                        {conf !== undefined ? (
+                          <span style={{ fontSize: 11, color: confColor }}>{Math.round(conf * 100)}% confidence</span>
+                        ) : null}
+                      </div>
+                      <input
+                        type="text"
+                        value={value}
+                        onChange={(e) => setEditedFields((prev) => ({ ...prev, [key]: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '7px 10px',
+                          fontSize: 13,
+                          borderRadius: 6,
+                          border: `1px solid ${conf !== undefined && conf < 0.4 ? 'var(--warning)' : 'var(--border)'}`,
+                          background: 'var(--surface)',
+                        }}
+                      />
+                      {extractionPreview.evidence[key] ? (
+                        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+                          Evidence: {String(extractionPreview.evidence[key]).slice(0, 120)}
+                        </p>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {Object.keys(editedFields).length === 0 ? (
+                <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+                  No fields were extracted. The page may require JavaScript rendering or a different extraction mode.
+                </p>
+              ) : null}
+
+              <div style={{ display: 'flex', gap: 10, paddingTop: 8, borderTop: '1px solid var(--border)' }}>
+                <button
+                  onClick={handleCommit}
+                  disabled={committing || Object.keys(editedFields).length === 0}
                   style={{
                     padding: '8px 20px',
                     fontSize: 14,
@@ -499,18 +771,41 @@ export default function InspectClient() {
                     border: 'none',
                     background: 'var(--primary)',
                     color: '#fff',
-                    cursor: ingesting ? 'not-allowed' : 'pointer',
-                    opacity: ingesting ? 0.6 : 1,
+                    cursor: committing || Object.keys(editedFields).length === 0 ? 'not-allowed' : 'pointer',
+                    opacity: committing || Object.keys(editedFields).length === 0 ? 0.6 : 1,
                   }}
                 >
-                  {ingesting ? 'Pushing…' : 'Push to intake →'}
+                  {committing ? 'Committing…' : 'Commit to pipeline →'}
                 </button>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+                  Committed as human-reviewed · goes straight to moderation as in_review
+                </p>
               </div>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'flex-end', paddingBottom: 2 }}>
-                Mode is auto-selected from the AI recommendation. Override if needed.
+            </div>
+          ) : null}
+
+          {commitResult ? (
+            <div style={{ padding: '14px 16px', background: 'var(--success-soft)', borderRadius: 6 }}>
+              <p style={{ fontWeight: 500, color: 'var(--success)', marginBottom: 6 }}>✓ Committed successfully</p>
+              <p style={{ fontSize: 13, color: 'var(--text)' }}>
+                Review status: <strong>{commitResult.reviewStatus}</strong>
+                {' · '}
+                <a href={`/intake/${commitResult.ingestionJobId}`} style={{ color: 'var(--primary)' }}>
+                  View intake job →
+                </a>
+                {' · '}
+                <a href={`/workbench/${commitResult.proposedChangeSetId}`} style={{ color: 'var(--primary)' }}>
+                  Open in workbench →
+                </a>
               </p>
             </div>
-          )}
+          ) : null}
+
+          {chatError ? (
+            <p role="alert" style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>
+              {chatError}
+            </p>
+          ) : null}
         </section>
       ) : null}
     </div>
