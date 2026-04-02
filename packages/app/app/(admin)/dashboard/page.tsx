@@ -85,9 +85,14 @@ export default async function DashboardPage() {
         title="Dashboard"
         description="What needs attention right now."
         actions={
-          <Link href="/intake" className="action-button variant-primary">
-            + Ingest URL
-          </Link>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Link href="/venues" className="action-button variant-secondary">
+              + Add venues
+            </Link>
+            <Link href="/intake" className="action-button variant-primary">
+              + Ingest URL
+            </Link>
+          </div>
         }
       />
 
