@@ -16,6 +16,7 @@ import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
 import { requireRole } from '@/lib/auth-guard';
 import { getApiKeyStatuses } from '@/lib/api-key-status';
 import { prisma } from '@/lib/db';
+import { PROVIDER_MODELS } from '@/lib/ai/provider-selector';
 import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 
 export const dynamic = 'force-dynamic';
@@ -48,7 +49,7 @@ export default async function SystemPage() {
     return <AdminSetupRequired />;
   }
 
-  const [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult, aiProviderSettingResult, searchProviderSettingResult] = await Promise.allSettled([
+  const [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult, aiProviderSettingResult, aiModelSettingResult, searchProviderSettingResult] = await Promise.allSettled([
     prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } }),
     prisma.siteSetting.findUnique({ where: { key: 'pipeline_drain_mode' } }),
     prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { version: 'desc' } }),
@@ -56,6 +57,7 @@ export default async function SystemPage() {
     prisma.pipelineTelemetry.findMany({ orderBy: { createdAt: 'desc' }, take: 8 }),
     prisma.pipelineTelemetry.findMany({ where: { stage: { in: [...RECOVERY_AUDIT_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 80 }),
     prisma.siteSetting.findUnique({ where: { key: 'ai_extraction_provider' } }),
+    prisma.siteSetting.findUnique({ where: { key: 'ai_extraction_model' } }),
     prisma.siteSetting.findUnique({ where: { key: 'search_provider' } })
   ]);
 
@@ -65,8 +67,10 @@ export default async function SystemPage() {
   const activeModel = activeModelResult.status === 'fulfilled' ? activeModelResult.value : null;
   const recentTelemetry: TelemetryRow[] = recentTelemetryResult.status === 'fulfilled' ? recentTelemetryResult.value : [];
   const aiProviderSetting = aiProviderSettingResult.status === 'fulfilled' ? aiProviderSettingResult.value : null;
+  const activeModelSetting = aiModelSettingResult.status === 'fulfilled' ? aiModelSettingResult.value : null;
   const searchProviderSetting = searchProviderSettingResult.status === 'fulfilled' ? searchProviderSettingResult.value : null;
   const activeProvider = (aiProviderSetting?.value ?? 'anthropic') as 'anthropic' | 'openai' | 'gemini';
+  const activeModelId = activeModelSetting?.value ?? null;
   const activeSearchProvider = (searchProviderSetting?.value ?? 'brave') as 'brave' | 'google_cse';
   const recoveryAudit =
     recoveryAuditResult.status === 'fulfilled'
@@ -75,7 +79,7 @@ export default async function SystemPage() {
         )
       : ([] as RecoveryAuditEvent[]);
 
-  const hasPartialData = [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult, aiProviderSettingResult, searchProviderSettingResult].some(
+  const hasPartialData = [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult, aiProviderSettingResult, aiModelSettingResult, searchProviderSettingResult].some(
     (result) => result.status === 'rejected'
   );
 
@@ -192,7 +196,7 @@ export default async function SystemPage() {
 
       <SectionCard
         title="AI extraction provider"
-        subtitle="Select which AI provider powers field extraction in the intake pipeline. The selected provider must have its API key configured."
+        subtitle="Select which AI provider and model powers field extraction in the intake pipeline."
       >
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 0' }}>
           {(['anthropic', 'openai', 'gemini'] as const).map((provider) => {
@@ -272,8 +276,62 @@ export default async function SystemPage() {
             );
           })}
         </div>
+
+        {(['anthropic', 'openai', 'gemini'] as const).includes(activeProvider) && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 10 }}>
+              Model for {activeProvider === 'anthropic' ? 'Anthropic' : activeProvider === 'openai' ? 'OpenAI' : 'Gemini'}
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {PROVIDER_MODELS[activeProvider].map((m) => {
+                const isActiveModel = activeModelId === m.id ||
+                  (!activeModelId && PROVIDER_MODELS[activeProvider][0].id === m.id);
+                return (
+                  <div
+                    key={m.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      padding: '8px 12px',
+                      borderRadius: 6,
+                      border: `1px solid ${isActiveModel ? 'var(--primary)' : 'var(--border)'}`,
+                      background: isActiveModel ? 'var(--primary-soft)' : 'var(--surface)'
+                    }}
+                  >
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontWeight: 500, fontSize: 13 }}>{m.label}</span>
+                      {' '}
+                      <code style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.id}</code>
+                    </div>
+                    {isActiveModel ? (
+                      <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--primary)', minWidth: 80, textAlign: 'right' }}>
+                        Active
+                      </span>
+                    ) : (
+                      <form action="/api/admin/config/ai-model" method="POST" style={{ minWidth: 80, textAlign: 'right' }}>
+                        <input type="hidden" name="model" value={m.id} />
+                        <button type="submit" style={{
+                          fontSize: 12,
+                          padding: '4px 12px',
+                          borderRadius: 4,
+                          border: '1px solid var(--border)',
+                          background: 'var(--surface)',
+                          cursor: 'pointer',
+                          color: 'var(--text)'
+                        }}>
+                          Use this
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
-          Provider selection takes effect on the next intake run. Add missing keys in Vercel → Settings → Environment Variables, then redeploy.
+          Model selection takes effect on the next intake run. Faster/cheaper models are recommended for high-volume ingestion. Switch to a more capable model for complex or low-confidence pages.
         </p>
       </SectionCard>
 
