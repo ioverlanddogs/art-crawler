@@ -282,14 +282,31 @@ export default async function IntakeJobDetailPage({ params }: { params: { id: st
               </p>
               <table className="data-table">
                 <tbody>
-                  {Object.entries(extractedFields)
-                    .slice(0, 5)
-                    .map(([key, value]) => (
+                  {Object.entries(extractedFields).map(([key, value]) => {
+                    const confidence = extractionRun?.confidenceJson &&
+                      typeof extractionRun.confidenceJson === 'object' &&
+                      !Array.isArray(extractionRun.confidenceJson)
+                      ? (extractionRun.confidenceJson as Record<string, number>)[key]
+                      : undefined;
+
+                    return (
                       <tr key={key}>
                         <th scope="row">{key}</th>
-                        <td>{typeof value === 'string' ? value : JSON.stringify(value)}</td>
+                        <td>
+                          <span>{typeof value === 'string' ? value : JSON.stringify(value)}</span>
+                          {confidence !== undefined ? (
+                            <span style={{
+                              marginLeft: 8,
+                              fontSize: 11,
+                              color: confidence >= 0.7 ? 'var(--success)' : confidence >= 0.4 ? 'var(--warning)' : 'var(--danger)'
+                            }}>
+                              {Math.round(confidence * 100)}%
+                            </span>
+                          ) : null}
+                        </td>
                       </tr>
-                    ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

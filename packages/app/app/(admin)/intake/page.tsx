@@ -41,6 +41,34 @@ export default async function IntakePage({ searchParams }: { searchParams?: Reco
     <div className="stack">
       <PageHeader title="Intake" description="Submit a URL to ingest and track parsing progress." />
 
+      {/* Status filter tabs */}
+      <div className="filters-row">
+        {[
+          { label: 'All', value: '' },
+          { label: 'Needs review', value: 'needs_review' },
+          { label: 'Failed', value: 'failed' },
+          { label: 'In progress', value: 'fetching' },
+          { label: 'Published', value: 'published' }
+        ].map(({ label, value }) => (
+          <Link
+            key={value}
+            href={value ? `/intake?status=${value}` : '/intake'}
+            className="action-button"
+            style={{
+              fontSize: 13,
+              padding: '4px 12px',
+              background: (statusParam ?? '') === value ? 'var(--primary)' : 'var(--surface)',
+              color: (statusParam ?? '') === value ? '#fff' : 'var(--text)',
+              border: '1px solid var(--border)',
+              borderRadius: 6,
+              textDecoration: 'none'
+            }}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
       <SectionCard title="New import">
         <IntakePageClient />
       </SectionCard>

@@ -102,7 +102,10 @@ export function AdminShell({
             <p className="nav-group-label">{group.label}</p>
             <nav>
               {group.items.map((item) => {
-                const active = pathname === item.href;
+                const active =
+                  item.href === '/'
+                    ? pathname === '/'
+                    : pathname === item.href || pathname.startsWith(item.href + '/');
                 return (
                   <Link key={item.href} href={withScopeQuery(item.href, scope)} className={`nav-link ${active ? 'active' : ''}`}>
                     <span>{item.label}</span>

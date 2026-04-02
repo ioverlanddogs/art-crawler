@@ -55,6 +55,30 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
 
   return (
     <div>
+      {/* Promote to venue — shown before workbench for gallery mode change sets */}
+      {changeSet.sourceDocument.sourceType === 'gallery' ? (
+        <section className="section-card">
+          <header className="section-card-header">
+            <div>
+              <h2>Promote to venue</h2>
+              <p>This change set was extracted in gallery mode — promote it to create a canonical Venue record before reviewing fields.</p>
+            </div>
+          </header>
+          <div>
+            <PromoteVenueAction
+              proposedChangeSetId={changeSet.id}
+              extractedName={
+                typeof (changeSet.proposedDataJson as Record<string, unknown>)?.venueName === 'string'
+                  ? String((changeSet.proposedDataJson as Record<string, unknown>).venueName)
+                  : typeof (changeSet.proposedDataJson as Record<string, unknown>)?.name === 'string'
+                    ? String((changeSet.proposedDataJson as Record<string, unknown>).name)
+                    : undefined
+              }
+            />
+          </div>
+        </section>
+      ) : null}
+
       <WorkbenchClient
         initialData={{
           ...changeSet,
@@ -81,31 +105,6 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
           reviewers
         }}
       />
-
-      {changeSet.sourceDocument.sourceType === 'gallery' ? (
-        <div style={{ marginTop: 16 }}>
-          <section className="section-card">
-            <header className="section-card-header">
-              <div>
-                <h2>Promote to venue</h2>
-                <p>This change set was extracted in gallery mode — it can be promoted to a canonical Venue record.</p>
-              </div>
-            </header>
-            <div>
-              <PromoteVenueAction
-                proposedChangeSetId={changeSet.id}
-                extractedName={
-                  typeof (changeSet.proposedDataJson as Record<string, unknown>)?.venueName === 'string'
-                    ? String((changeSet.proposedDataJson as Record<string, unknown>).venueName)
-                    : typeof (changeSet.proposedDataJson as Record<string, unknown>)?.name === 'string'
-                      ? String((changeSet.proposedDataJson as Record<string, unknown>).name)
-                      : undefined
-                }
-              />
-            </div>
-          </section>
-        </div>
-      ) : null}
     </div>
   );}
 
