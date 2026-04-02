@@ -48,13 +48,14 @@ export default async function SystemPage() {
     return <AdminSetupRequired />;
   }
 
-  const [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult] = await Promise.allSettled([
+  const [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult, aiProviderSettingResult] = await Promise.allSettled([
     prisma.siteSetting.findUnique({ where: { key: 'mining_import_enabled' } }),
     prisma.siteSetting.findUnique({ where: { key: 'pipeline_drain_mode' } }),
     prisma.pipelineConfigVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { version: 'desc' } }),
     prisma.modelVersion.findFirst({ where: { status: 'ACTIVE' }, orderBy: { createdAt: 'desc' } }),
     prisma.pipelineTelemetry.findMany({ orderBy: { createdAt: 'desc' }, take: 8 }),
-    prisma.pipelineTelemetry.findMany({ where: { stage: { in: [...RECOVERY_AUDIT_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 80 })
+    prisma.pipelineTelemetry.findMany({ where: { stage: { in: [...RECOVERY_AUDIT_STAGES] } }, orderBy: { createdAt: 'desc' }, take: 80 }),
+    prisma.siteSetting.findUnique({ where: { key: 'ai_extraction_provider' } })
   ]);
 
   const importFlag = importFlagResult.status === 'fulfilled' ? importFlagResult.value : null;
@@ -62,6 +63,8 @@ export default async function SystemPage() {
   const activeConfig = activeConfigResult.status === 'fulfilled' ? activeConfigResult.value : null;
   const activeModel = activeModelResult.status === 'fulfilled' ? activeModelResult.value : null;
   const recentTelemetry: TelemetryRow[] = recentTelemetryResult.status === 'fulfilled' ? recentTelemetryResult.value : [];
+  const aiProviderSetting = aiProviderSettingResult.status === 'fulfilled' ? aiProviderSettingResult.value : null;
+  const activeProvider = (aiProviderSetting?.value ?? 'anthropic') as 'anthropic' | 'openai' | 'gemini';
   const recoveryAudit =
     recoveryAuditResult.status === 'fulfilled'
       ? recoveryAuditResult.value.map(
@@ -69,7 +72,7 @@ export default async function SystemPage() {
         )
       : ([] as RecoveryAuditEvent[]);
 
-  const hasPartialData = [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult].some(
+  const hasPartialData = [importFlagResult, drainFlagResult, activeConfigResult, activeModelResult, recentTelemetryResult, recoveryAuditResult, aiProviderSettingResult].some(
     (result) => result.status === 'rejected'
   );
 
@@ -80,6 +83,7 @@ export default async function SystemPage() {
   const staleTelemetryMinutes = recentTelemetry[0] ? Math.floor((Date.now() - new Date(recentTelemetry[0].createdAt).getTime()) / 60000) : null;
   const slaState = staleTelemetryMinutes === null ? 'unknown' : staleTelemetryMinutes > 180 ? 'breached' : staleTelemetryMinutes > 120 ? 'at_risk' : 'healthy';
   const apiKeyGroups = getApiKeyStatuses();
+  const aiKeys = apiKeyGroups.find((g) => g.group === 'AI extraction')?.keys ?? [];
 
   const state = !importFlag && !drainFlag && hasPartialData
     ? 'unknown'
@@ -178,6 +182,95 @@ export default async function SystemPage() {
 
       <SectionCard title="Recovery action audit" subtitle="Actor, reason, scope, and outcome for replay/retry/pause/resume controls.">
         <RecoveryAuditFeed events={recoveryAudit} hasGaps={hasPartialData || recoveryAudit.some((event: RecoveryAuditEvent) => !event.detail)} />
+      </SectionCard>
+
+
+
+      <SectionCard
+        title="AI extraction provider"
+        subtitle="Select which AI provider powers field extraction in the intake pipeline. The selected provider must have its API key configured."
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 0' }}>
+          {(['anthropic', 'openai', 'gemini'] as const).map((provider) => {
+            const labels: Record<string, string> = {
+              anthropic: 'Anthropic (Claude)',
+              openai: 'OpenAI (GPT)',
+              gemini: 'Google Gemini'
+            };
+            const envVars: Record<string, string> = {
+              anthropic: 'ANTHROPIC_API_KEY',
+              openai: 'OPENAI_API_KEY',
+              gemini: 'GEMINI_API_KEY'
+            };
+            const keyPresent = aiKeys.find((k) => k.envVar === envVars[provider])?.present ?? false;
+            const isActive = activeProvider === provider;
+            return (
+              <div
+                key={provider}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  padding: '10px 14px',
+                  borderRadius: 6,
+                  border: `1px solid ${isActive ? 'var(--primary)' : 'var(--border)'}`,
+                  background: isActive ? 'var(--primary-soft)' : 'var(--surface)'
+                }}
+              >
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontWeight: 500, fontSize: 14 }}>{labels[provider]}</span>
+                  {' '}
+                  <code style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {envVars[provider]}
+                  </code>
+                </div>
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 500,
+                    padding: '2px 8px',
+                    borderRadius: 4,
+                    background: keyPresent ? 'var(--success-soft)' : 'var(--surface-muted)',
+                    color: keyPresent ? 'var(--success)' : 'var(--text-muted)'
+                  }}
+                >
+                  {keyPresent ? 'Key configured' : 'Key missing'}
+                </span>
+                {isActive ? (
+                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--primary)', minWidth: 80, textAlign: 'right' }}>
+                    Active
+                  </span>
+                ) : (
+                  <form
+                    action="/api/admin/config/ai-provider"
+                    method="POST"
+                    style={{ minWidth: 80, textAlign: 'right' }}
+                  >
+                    <input type="hidden" name="provider" value={provider} />
+                    <button
+                      type="submit"
+                      disabled={!keyPresent}
+                      style={{
+                        fontSize: 12,
+                        padding: '4px 12px',
+                        borderRadius: 4,
+                        border: '1px solid var(--border)',
+                        background: 'var(--surface)',
+                        cursor: keyPresent ? 'pointer' : 'not-allowed',
+                        color: keyPresent ? 'var(--text)' : 'var(--text-muted)'
+                      }}
+                    >
+                      Use this
+                    </button>
+                  </form>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
+          Provider selection takes effect on the next intake run. Add missing keys in Vercel → Settings → Environment Variables, then redeploy.
+        </p>
       </SectionCard>
 
       <SectionCard
