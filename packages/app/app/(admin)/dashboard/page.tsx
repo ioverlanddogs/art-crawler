@@ -85,7 +85,7 @@ export default async function DashboardPage() {
         title="Dashboard"
         description="What needs attention right now."
         actions={
-          <Link href="/intake" className="inline-link">
+          <Link href="/intake" className="action-button variant-primary">
             + Ingest URL
           </Link>
         }
@@ -95,24 +95,32 @@ export default async function DashboardPage() {
         <StatCard
           label="Needs review"
           value={
-            <span>
+            <Link href="/intake?status=needs_review" className="inline-link">
               {pendingReview}{' '}
               {pendingReview > 0 ? <StatusBadge tone="warning">degraded</StatusBadge> : null}
-            </span>
+            </Link>
           }
-          detail="/intake?status=needs_review"
+          detail="Intake jobs awaiting review"
         />
-        <StatCard label="In progress" value={inProgress} />
+        <StatCard label="In progress" value={inProgress} detail="Currently processing" />
         <StatCard
           label="Failed today"
           value={
-            <span>
+            <Link href="/intake?status=failed" className="inline-link">
               {failedToday} {failedToday > 0 ? <StatusBadge tone="danger">degraded</StatusBadge> : null}
-            </span>
+            </Link>
           }
-          detail="/intake?status=failed"
+          detail="Failed intake jobs in the last 24h"
         />
-        <StatCard label="Ready to publish" value={readyToPublish} detail="/publish" />
+        <StatCard
+          label="Ready to publish"
+          value={
+            <Link href="/publish" className="inline-link">
+              {readyToPublish}
+            </Link>
+          }
+          detail="Events approved and ready to publish"
+        />
       </div>
 
       <SectionCard title="Recent intake jobs">
