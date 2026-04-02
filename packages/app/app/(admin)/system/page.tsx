@@ -13,6 +13,8 @@ import {
   TrendSummaryCard
 } from '@/components/admin';
 import { AdminSetupRequired } from '@/components/admin/AdminSetupRequired';
+import { requireRole } from '@/lib/auth-guard';
+import { getApiKeyStatuses } from '@/lib/api-key-status';
 import { prisma } from '@/lib/db';
 import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 
@@ -40,6 +42,8 @@ type RecoveryState = 'paused' | 'replaying' | 'draining' | 'partially_recovered'
 const RECOVERY_STATES: RecoveryState[] = ['paused', 'replaying', 'draining', 'partially_recovered', 'recovered', 'blocked', 'unknown'];
 
 export default async function SystemPage() {
+  await requireRole(['admin', 'operator']);
+
   if (!isDatabaseRuntimeReady()) {
     return <AdminSetupRequired />;
   }
@@ -75,6 +79,7 @@ export default async function SystemPage() {
 
   const staleTelemetryMinutes = recentTelemetry[0] ? Math.floor((Date.now() - new Date(recentTelemetry[0].createdAt).getTime()) / 60000) : null;
   const slaState = staleTelemetryMinutes === null ? 'unknown' : staleTelemetryMinutes > 180 ? 'breached' : staleTelemetryMinutes > 120 ? 'at_risk' : 'healthy';
+  const apiKeyGroups = getApiKeyStatuses();
 
   const state = !importFlag && !drainFlag && hasPartialData
     ? 'unknown'
@@ -173,6 +178,83 @@ export default async function SystemPage() {
 
       <SectionCard title="Recovery action audit" subtitle="Actor, reason, scope, and outcome for replay/retry/pause/resume controls.">
         <RecoveryAuditFeed events={recoveryAudit} hasGaps={hasPartialData || recoveryAudit.some((event: RecoveryAuditEvent) => !event.detail)} />
+      </SectionCard>
+
+      <SectionCard
+        title="API key status"
+        subtitle="Read-only environment readiness checks. Values are never displayed, only whether each key is present."
+      >
+        <div style={{ display: 'grid', gap: 24 }}>
+          {apiKeyGroups.map((group) => (
+            <section key={group.group}>
+              <h3 style={{ fontSize: 16, fontWeight: 500, marginBottom: 12 }}>{group.group}</h3>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
+                <thead>
+                  <tr style={{ color: 'var(--text-muted)', textAlign: 'left' }}>
+                    <th style={{ padding: '6px 12px 6px 0', fontWeight: 500, width: '22%' }}>Key</th>
+                    <th style={{ padding: '6px 12px', fontWeight: 500, width: '12%' }}>Status</th>
+                    <th style={{ padding: '6px 12px', fontWeight: 500, width: '20%' }}>Env var</th>
+                    <th style={{ padding: '6px 12px', fontWeight: 500 }}>Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {group.keys.map((key) => (
+                    <tr key={key.envVar} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 12px 10px 0', fontWeight: 500 }}>
+                        {key.name}
+                        {key.docsUrl ? (
+                          <>
+                            {' '}
+                            <a
+                              href={key.docsUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ fontSize: 12, color: 'var(--primary)', textDecoration: 'none' }}
+                            >
+                              Get key →
+                            </a>
+                          </>
+                        ) : null}
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <span
+                          style={{
+                            display: 'inline-block',
+                            padding: '2px 8px',
+                            borderRadius: 4,
+                            fontSize: 12,
+                            fontWeight: 500,
+                            background: key.present ? 'var(--success-soft)' : 'var(--danger-soft)',
+                            color: key.present ? 'var(--success)' : 'var(--danger)'
+                          }}
+                        >
+                          {key.present ? 'Configured' : 'Not set'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 12px' }}>
+                        <code
+                          style={{
+                            fontSize: 12,
+                            background: 'var(--surface-muted)',
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            border: '1px solid var(--border)'
+                          }}
+                        >
+                          {key.envVar}
+                        </code>
+                      </td>
+                      <td style={{ padding: '10px 12px', color: 'var(--text-muted)', lineHeight: 1.5 }}>{key.description}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 16 }}>
+          To add or update a key: go to your Vercel project → Settings → Environment Variables → add the env var name shown above → redeploy.
+        </p>
       </SectionCard>
     </div>
   );
