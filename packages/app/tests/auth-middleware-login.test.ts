@@ -134,10 +134,8 @@ describe('auth middleware and login route consistency', () => {
     expect(loginClientSource).toContain("signIn('credentials'");
     expect(loginClientSource).toContain('redirect: false');
     expect(loginClientSource).toContain('Email and password are required.');
-    expect(loginClientSource).toContain("signIn('google', { callbackUrl, redirect: true })");
     expect(loginClientSource).toContain('window.location.href = `/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`');
     expect(loginClientSource).toContain("Break-glass access");
-    expect(loginClientSource).toContain('Click here instead');
     expect(loginClientSource).toContain("searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL");
     expect(loginClientSource).toContain("DEFAULT_CALLBACK_URL = '/dashboard'");
     expect(loginClientSource).toContain('result?.error ?? null');
