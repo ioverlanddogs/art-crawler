@@ -29,9 +29,11 @@ function stripFences(value: string): string {
 
 export class GeminiProvider implements AiExtractionProvider {
   readonly name = 'gemini' as const;
-  readonly modelId = 'gemini-1.5-flash';
+  readonly modelId: string;
 
-  constructor(private readonly apiKey: string) {}
+  constructor(private readonly apiKey: string, modelId?: string) {
+    this.modelId = modelId ?? 'gemini-1.5-flash';
+  }
 
   async extractFields(input: {
     extractedText: string;

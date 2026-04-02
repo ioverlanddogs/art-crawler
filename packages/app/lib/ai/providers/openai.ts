@@ -29,9 +29,11 @@ function stripFences(value: string): string {
 
 export class OpenAIProvider implements AiExtractionProvider {
   readonly name = 'openai' as const;
-  readonly modelId = 'gpt-4o-mini';
+  readonly modelId: string;
 
-  constructor(private readonly apiKey: string) {}
+  constructor(private readonly apiKey: string, modelId?: string) {
+    this.modelId = modelId ?? 'gpt-4o-mini';
+  }
 
   async extractFields(input: {
     extractedText: string;

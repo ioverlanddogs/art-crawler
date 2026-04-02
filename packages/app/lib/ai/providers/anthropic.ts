@@ -31,9 +31,11 @@ function stripFences(value: string): string {
 
 export class AnthropicProvider implements AiExtractionProvider {
   readonly name = 'anthropic' as const;
-  readonly modelId = 'claude-haiku-4-5-20251001';
+  readonly modelId: string;
 
-  constructor(private readonly apiKey: string) {}
+  constructor(private readonly apiKey: string, modelId?: string) {
+    this.modelId = modelId ?? 'claude-haiku-4-5-20251001';
+  }
 
   async extractFields(input: {
     extractedText: string;
