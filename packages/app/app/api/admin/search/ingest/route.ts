@@ -7,7 +7,8 @@ import { runIntake } from '@/lib/intake/intake-service';
 export const dynamic = 'force-dynamic';
 
 const schema = z.object({
-  urls: z.array(z.string().url()).min(1).max(20)
+  urls: z.array(z.string().url()).min(1).max(20),
+  mode: z.enum(['events', 'artists', 'artworks', 'gallery', 'auto']).default('events')
 });
 
 export async function POST(req: Request) {
@@ -39,7 +40,11 @@ export async function POST(req: Request) {
 
   for (const url of parsed.data.urls) {
     try {
-      const result = await runIntake(prisma, { sourceUrl: url }, session.user.id);
+      const result = await runIntake(
+        prisma,
+        { sourceUrl: url, recordTypeOverride: parsed.data.mode },
+        session.user.id
+      );
       results.push({ url, status: 'queued', jobId: result.ingestionJobId });
     } catch (error: unknown) {
       results.push({

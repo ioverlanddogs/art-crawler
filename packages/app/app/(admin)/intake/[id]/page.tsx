@@ -7,6 +7,7 @@ import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
 import { IngestionJobStatus } from '@/lib/prisma-client';
 import { getUrlKnowledge } from '@/lib/intake/url-knowledge';
 import { IntakeRetryAction } from '../IntakePageClient';
+import { ReRunAction } from '../ReRunAction';
 
 export const dynamic = 'force-dynamic';
 
@@ -219,6 +220,23 @@ export default async function IntakeJobDetailPage({ params }: { params: { id: st
             </div>
           </div>
         )}
+      </SectionCard>
+
+
+      <SectionCard
+        title="Re-run intake"
+        subtitle="Run this URL through the intake pipeline again with a different extraction focus."
+      >
+        <ReRunAction
+          sourceUrl={job.sourceDocument.sourceUrl}
+          recommendedMode={
+            urlKnowledge?.replayStrategy?.recommendedMode ?? urlKnowledge?.bestExtractionMode ?? 'events'
+          }
+        />
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
+          Re-running creates a new intake job and fetches the URL again. The extraction mode
+          changes what the AI looks for on the page — choose based on the content type.
+        </p>
       </SectionCard>
 
       <div className="two-col">

@@ -19,5 +19,6 @@ export interface AiExtractionProvider {
   extractFields(input: {
     extractedText: string;
     sourceUrl: string;
+    mode?: 'events' | 'artists' | 'artworks' | 'gallery' | 'auto';
   }): Promise<AiExtractionResult>;
 }

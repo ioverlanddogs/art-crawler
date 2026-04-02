@@ -223,7 +223,8 @@ export async function runIntake(
       extractionResult = await extractFields(
         {
           extractedText: fetchResult.extractedText,
-          sourceUrl: fetchResult.finalUrl
+          sourceUrl: fetchResult.finalUrl,
+          mode: (input.recordTypeOverride as 'events' | 'artists' | 'artworks' | 'gallery' | 'auto') ?? 'events'
         },
         prisma
       );

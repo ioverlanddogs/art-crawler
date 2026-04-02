@@ -12,7 +12,11 @@ export interface ExtractionResult {
 }
 
 export async function extractFields(
-  sourceDocument: { extractedText: string; sourceUrl: string },
+  sourceDocument: {
+    extractedText: string;
+    sourceUrl: string;
+    mode?: 'events' | 'artists' | 'artworks' | 'gallery' | 'auto';
+  },
   prisma: PrismaClient
 ): Promise<ExtractionResult> {
   const provider = await getActiveExtractionProvider(prisma);
