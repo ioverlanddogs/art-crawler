@@ -265,8 +265,9 @@ model SourceDocument {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  ingestionJobs  IngestionJob[]
-  extractionRuns ExtractionRun[]
+  ingestionJobs     IngestionJob[]
+  ingestionLogs     IngestionLog[]
+  extractionRuns    ExtractionRun[]
   proposedChangeSets ProposedChangeSet[]
 
   @@index([fingerprint])
@@ -287,9 +288,28 @@ model IngestionJob {
   updatedAt         DateTime           @updatedAt
 
   sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  ingestionLogs  IngestionLog[]
 
   @@index([status, createdAt(sort: Desc)])
   @@index([sourceDocumentId])
+}
+
+model IngestionLog {
+  id               String   @id @default(cuid())
+  sourceDocumentId String
+  ingestionJobId   String?
+  stage            String
+  status           String
+  message          String
+  detail           Json?
+  createdAt        DateTime @default(now())
+
+  sourceDocument SourceDocument @relation(fields: [sourceDocumentId], references: [id], onDelete: Cascade)
+  ingestionJob   IngestionJob?  @relation(fields: [ingestionJobId], references: [id], onDelete: SetNull)
+
+  @@index([sourceDocumentId, createdAt(sort: Desc)])
+  @@index([ingestionJobId, createdAt(sort: Desc)])
+  @@index([stage, status])
 }
 
 model ExtractionRun {

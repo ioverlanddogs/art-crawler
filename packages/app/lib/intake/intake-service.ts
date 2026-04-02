@@ -5,6 +5,7 @@ import { fingerprintUrl } from './fingerprint';
 import { extractFields } from './extract-fields';
 import { matchCanonical } from './match-canonical';
 import { detectPlatform } from './platform-detector';
+import { writeIntakeLog } from './intake-logger';
 
 export interface IntakeRunResult {
   sourceDocumentId: string;
@@ -37,12 +38,48 @@ export async function runIntake(
   });
 
   try {
+    await writeIntakeLog(prisma, {
+      sourceDocumentId: sourceDocument.id,
+      ingestionJobId: job.id,
+      stage: 'fetch',
+      status: 'info',
+      message: `Intake started for ${input.sourceUrl}`
+    });
+
     await prisma.ingestionJob.update({
       where: { id: job.id },
       data: { status: 'fetching', updatedAt: new Date() }
     });
 
     const fetchResult = await fetchSource(input.sourceUrl);
+
+    if (!fetchResult.error) {
+      await writeIntakeLog(prisma, {
+        sourceDocumentId: sourceDocument.id,
+        ingestionJobId: job.id,
+        stage: 'fetch',
+        status: 'success',
+        message: `Fetched ${fetchResult.finalUrl} — HTTP ${fetchResult.httpStatus}`,
+        detail: {
+          httpStatus: fetchResult.httpStatus,
+          contentType: fetchResult.contentType,
+          finalUrl: fetchResult.finalUrl
+        }
+      });
+    } else {
+      await writeIntakeLog(prisma, {
+        sourceDocumentId: sourceDocument.id,
+        ingestionJobId: job.id,
+        stage: 'fetch',
+        status: 'failure',
+        message: `Fetch failed: ${fetchResult.error}`,
+        detail: {
+          httpStatus: fetchResult.httpStatus,
+          errorCode: fetchResult.error,
+          finalUrl: fetchResult.finalUrl
+        }
+      });
+    }
 
     const updatedSourceDocument = await prisma.sourceDocument.update({
       where: { id: sourceDocument.id },
@@ -67,6 +104,20 @@ export async function runIntake(
         const detection = detectPlatform({
           url: fetchResult.finalUrl,
           html: fetchResult.rawHtml
+        });
+
+        await writeIntakeLog(prisma, {
+          sourceDocumentId: sourceDocument.id,
+          ingestionJobId: job.id,
+          stage: 'platform_detect',
+          status: 'success',
+          message: `Detected platform: ${detection.platformType} (${detection.confidence} confidence)`,
+          detail: {
+            platformType: detection.platformType,
+            platformConfidence: detection.confidence,
+            requiresJs: detection.requiresJs,
+            signals: detection.signals
+          }
         });
 
         let hostname = '';
@@ -173,8 +224,33 @@ export async function runIntake(
           }
         }
       });
+      await writeIntakeLog(prisma, {
+        sourceDocumentId: sourceDocument.id,
+        ingestionJobId: job.id,
+        stage: 'extract',
+        status: 'failure',
+        message: `Extraction threw: ${error instanceof Error ? error.message : 'unknown_error'}`,
+        detail: {
+          errorMessage: error instanceof Error ? error.message : 'unknown_error'
+        }
+      });
       throw error;
     }
+
+    await writeIntakeLog(prisma, {
+      sourceDocumentId: sourceDocument.id,
+      ingestionJobId: job.id,
+      stage: 'extract',
+      status: extractionResult.warningsJson.length > 0 ? 'warning' : 'success',
+      message: `Extraction complete — model: ${extractionResult.modelVersion}`,
+      detail: {
+        modelVersion: extractionResult.modelVersion,
+        parserVersion: extractionResult.parserVersion,
+        inputTokens: (extractionResult as { usage?: { inputTokens?: number } }).usage?.inputTokens,
+        outputTokens: (extractionResult as { usage?: { outputTokens?: number } }).usage?.outputTokens,
+        warningsJson: extractionResult.warningsJson
+      }
+    });
 
     const extractionRun = await prisma.extractionRun.create({
       data: {
@@ -213,6 +289,18 @@ export async function runIntake(
 
     const matchResult = await matchCanonical(prisma, fetchResult.finalUrl);
 
+    await writeIntakeLog(prisma, {
+      sourceDocumentId: sourceDocument.id,
+      ingestionJobId: job.id,
+      stage: 'match',
+      status: 'success',
+      message: `Match result: ${matchResult.matchType}${matchResult.matchedEventId ? ` — event ${matchResult.matchedEventId}` : ''}`,
+      detail: {
+        matchType: matchResult.matchType,
+        matchedEventId: matchResult.matchedEventId
+      }
+    });
+
     const proposedChangeSet = await prisma.proposedChangeSet.create({
       data: {
         sourceDocumentId: sourceDocument.id,
@@ -232,6 +320,14 @@ export async function runIntake(
       }
     });
 
+    await writeIntakeLog(prisma, {
+      sourceDocumentId: sourceDocument.id,
+      ingestionJobId: job.id,
+      stage: 'complete',
+      status: 'success',
+      message: `Intake complete — status: needs_review, changeSet: ${proposedChangeSet.id}`
+    });
+
     return {
       sourceDocumentId: sourceDocument.id,
       ingestionJobId: job.id,
@@ -239,6 +335,18 @@ export async function runIntake(
       finalStatus: 'needs_review'
     };
   } catch (error: unknown) {
+    await writeIntakeLog(prisma, {
+      sourceDocumentId: sourceDocument.id,
+      ingestionJobId: job.id,
+      stage: 'complete',
+      status: 'failure',
+      message: `Intake failed: ${error instanceof Error ? error.message : 'unknown_error'}`,
+      detail: {
+        errorCode: 'intake_unhandled_error',
+        errorMessage: error instanceof Error ? error.message : 'unknown_error'
+      }
+    });
+
     await prisma.ingestionJob.update({
       where: { id: job.id },
       data: {
