@@ -312,6 +312,28 @@ model IngestionLog {
   @@index([stage, status])
 }
 
+model UrlKnowledge {
+  id                  String   @id @default(cuid())
+  normalizedUrl       String   @unique
+  domain              String
+  platformType        String?
+  requiresJs          Boolean  @default(false)
+  lastSuccessAt       DateTime?
+  lastFailureAt       DateTime?
+  successCount        Int      @default(0)
+  failureCount        Int      @default(0)
+  bestExtractionMode  String?
+  bestModelVersion    String?
+  bestConfidenceScore Float?
+  replayStrategy      Json?
+  notes               String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([domain])
+  @@index([normalizedUrl])
+}
+
 model ExtractionRun {
   id                  String   @id @default(cuid())
   sourceDocumentId    String

@@ -8,3 +8,4 @@ coverage
 *.log
 .prisma
 playwright-report
+packages/app/generated/

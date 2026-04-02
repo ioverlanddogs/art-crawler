@@ -6,6 +6,7 @@ import { extractFields } from './extract-fields';
 import { matchCanonical } from './match-canonical';
 import { detectPlatform } from './platform-detector';
 import { writeIntakeLog } from './intake-logger';
+import { recordIntakeFailure, recordIntakeSuccess } from './url-knowledge';
 
 export interface IntakeRunResult {
   sourceDocumentId: string;
@@ -38,6 +39,11 @@ export async function runIntake(
   });
 
   try {
+    let detectedPlatformMeta: { platformType: string | null; requiresJs: boolean } = {
+      platformType: null,
+      requiresJs: false
+    };
+
     await writeIntakeLog(prisma, {
       sourceDocumentId: sourceDocument.id,
       ingestionJobId: job.id,
@@ -160,6 +166,11 @@ export async function runIntake(
             }
           }
         });
+
+        detectedPlatformMeta = {
+          platformType: detection.platformType,
+          requiresJs: detection.requiresJs
+        };
       } catch {
         // platform detection is best-effort — never block the pipeline
       }
@@ -174,6 +185,10 @@ export async function runIntake(
           errorMessage: fetchResult.error,
           updatedAt: new Date()
         }
+      });
+      await recordIntakeFailure(prisma, {
+        url: input.sourceUrl,
+        errorCode: fetchResult.error ?? 'fetch_error'
       });
 
       return {
@@ -311,6 +326,26 @@ export async function runIntake(
       }
     });
 
+    // Record URL knowledge for successful intake
+    const confidenceValues = extractionResult.confidenceJson
+      ? Object.values(extractionResult.confidenceJson as Record<string, number>)
+      : [];
+    const avgConfidence =
+      confidenceValues.length > 0
+        ? confidenceValues.reduce((sum, v) => sum + v, 0) / confidenceValues.length
+        : 0;
+
+    await recordIntakeSuccess(prisma, {
+      url: fetchResult.finalUrl,
+      platformType: detectedPlatformMeta.platformType,
+      requiresJs: detectedPlatformMeta.requiresJs,
+      extractionMode:
+        (input.recordTypeOverride as 'events' | 'artists' | 'artworks' | 'gallery' | 'auto') ??
+        'events',
+      modelVersion: extractionResult.modelVersion,
+      confidenceScore: avgConfidence
+    });
+
     await prisma.ingestionJob.update({
       where: { id: job.id },
       data: {
@@ -345,6 +380,10 @@ export async function runIntake(
         errorCode: 'intake_unhandled_error',
         errorMessage: error instanceof Error ? error.message : 'unknown_error'
       }
+    });
+    await recordIntakeFailure(prisma, {
+      url: input.sourceUrl,
+      errorCode: error instanceof Error ? error.message : 'intake_unhandled_error'
     });
 
     await prisma.ingestionJob.update({
