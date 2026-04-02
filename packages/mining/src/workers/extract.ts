@@ -2,6 +2,7 @@ import { prisma } from '../lib/db.js';
 import { normaliseQueue } from '../queues.js';
 import { enqueueNextStage } from '../lib/stage-chaining.js';
 import { markSourceFailure, markSourceSuccess } from '../lib/source-health.js';
+import { createMiningAiExtractor } from '../lib/ai-extractor.js';
 import type { Prisma } from '../lib/prisma-client.js';
 
 export interface AiExtractor {
@@ -51,7 +52,7 @@ function parseBySourceType(sourceType: string, html: string): Record<string, unk
   return null;
 }
 
-export async function runExtract(candidateId: string, ai: AiExtractor = mockAiExtractor, enqueueNext = true) {
+export async function runExtract(candidateId: string, ai: AiExtractor = createMiningAiExtractor(), enqueueNext = true) {
   const candidate = await prisma.miningCandidate.findUniqueOrThrow({ where: { id: candidateId }, include: { source: true } });
   const html = candidate.html ?? '';
 

@@ -51,7 +51,8 @@ export default async function AdminLayout({ children }: { children: ReactNode })
         { href: '/recovery-studio', label: 'Recovery Studio', roles: ['admin', 'operator'] },
         { href: '/self-healing', label: 'Self-healing', roles: ['admin', 'operator'] },
         { href: '/data', label: 'Data Quality', roles: ['admin', 'operator'] },
-        { href: '/discovery', label: 'Discovery', roles: ['admin', 'operator'] }
+        { href: '/discovery', label: 'Discovery', roles: ['admin', 'operator'] },
+        { href: '/search', label: 'Search', roles: ['admin', 'operator', 'moderator'] }
       ]
     },
     {

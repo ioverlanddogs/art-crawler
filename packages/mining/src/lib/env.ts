@@ -54,3 +54,15 @@ export function readMiningRuntimeEnv(): MiningRuntimeEnv {
     runOnce: process.env.RUN_ONCE === 'true'
   };
 }
+
+export function getMiningAnthropicApiKey(): string | undefined {
+  return process.env.ANTHROPIC_API_KEY;
+}
+
+export function getMiningOpenAiApiKey(): string | undefined {
+  return process.env.OPENAI_API_KEY;
+}
+
+export function getMiningGeminiApiKey(): string | undefined {
+  return process.env.GEMINI_API_KEY;
+}
