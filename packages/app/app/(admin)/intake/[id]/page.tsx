@@ -27,9 +27,19 @@ export default async function IntakeJobDetailPage({ params }: { params: { id: st
     notFound();
   }
 
-  const [extractionRun, proposedChangeSet] = await Promise.all([
-    prisma.extractionRun.findFirst({ where: { sourceDocumentId: job.sourceDocumentId }, orderBy: { createdAt: 'desc' } }),
-    prisma.proposedChangeSet.findFirst({ where: { sourceDocumentId: job.sourceDocumentId }, orderBy: { createdAt: 'desc' } })
+  const [extractionRun, proposedChangeSet, ingestionLogs] = await Promise.all([
+    prisma.extractionRun.findFirst({
+      where: { sourceDocumentId: job.sourceDocumentId },
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.proposedChangeSet.findFirst({
+      where: { sourceDocumentId: job.sourceDocumentId },
+      orderBy: { createdAt: 'desc' }
+    }),
+    prisma.ingestionLog.findMany({
+      where: { ingestionJobId: params.id },
+      orderBy: { createdAt: 'asc' }
+    })
   ]);
 
   const extractedFields = extractionRun?.extractedFieldsJson && typeof extractionRun.extractedFieldsJson === 'object' && !Array.isArray(extractionRun.extractedFieldsJson) ? extractionRun.extractedFieldsJson : null;
@@ -49,6 +59,51 @@ export default async function IntakeJobDetailPage({ params }: { params: { id: st
             );
           })}
         </div>
+      </SectionCard>
+
+
+      <SectionCard title="Pipeline log" subtitle="Structured log of every stage for this intake run.">
+        {ingestionLogs.length === 0 ? (
+          <p className="muted" style={{ padding: '8px 0' }}>
+            No log entries yet. Log entries are written by runs after this feature was deployed.
+          </p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+            {ingestionLogs.map((entry) => (
+              <div
+                key={entry.id}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '90px 80px 1fr auto',
+                  gap: 12,
+                  padding: '10px 0',
+                  borderBottom: '1px solid var(--border)',
+                  alignItems: 'start',
+                  fontSize: 13
+                }}
+              >
+                <span style={{ fontWeight: 500 }}>{entry.stage}</span>
+                <StatusBadge
+                  tone={
+                    entry.status === 'success'
+                      ? 'success'
+                      : entry.status === 'failure'
+                        ? 'danger'
+                        : entry.status === 'warning'
+                          ? 'warning'
+                          : 'neutral'
+                  }
+                >
+                  {entry.status}
+                </StatusBadge>
+                <span style={{ color: 'var(--text)' }}>{entry.message}</span>
+                <span style={{ color: 'var(--text-muted)', whiteSpace: 'nowrap', fontSize: 12 }}>
+                  {new Date(entry.createdAt).toLocaleTimeString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </SectionCard>
 
       <div className="two-col">
