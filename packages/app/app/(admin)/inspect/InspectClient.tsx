@@ -95,8 +95,8 @@ function formatContent(content: string) {
   });
 }
 
-export default function InspectClient() {
-  const [urlInput, setUrlInput] = useState('');
+export default function InspectClient({ initialUrl = '' }: { initialUrl?: string }) {
+  const [urlInput, setUrlInput] = useState(initialUrl);
   const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);

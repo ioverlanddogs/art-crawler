@@ -8,7 +8,11 @@ import InspectClient from './InspectClient';
 
 export const dynamic = 'force-dynamic';
 
-export default async function InspectPage() {
+export default async function InspectPage({
+  searchParams
+}: {
+  searchParams?: Record<string, string | string[] | undefined>
+}) {
   if (!isDatabaseRuntimeReady()) {
     return <AdminSetupRequired />;
   }
@@ -27,6 +31,10 @@ export default async function InspectPage() {
   const provider = providerSetting?.value ?? 'anthropic';
   const model = modelSetting?.value ?? null;
 
+  const initialUrl = typeof searchParams?.url === 'string'
+    ? decodeURIComponent(searchParams.url)
+    : '';
+
   return (
     <div className="stack">
       <PageHeader
@@ -44,7 +52,7 @@ export default async function InspectPage() {
           </span>
         }
       />
-      <InspectClient />
+      <InspectClient initialUrl={initialUrl} />
     </div>
   );
 }
