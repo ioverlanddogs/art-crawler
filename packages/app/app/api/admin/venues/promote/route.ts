@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { requireRole } from '@/lib/auth-guard';
 import { authFailure, err, ok } from '@/lib/api/response';
 import { prisma } from '@/lib/db';
+import { registerVenueAsTrustedSource } from '@/lib/mining-db';
 
 export const dynamic = 'force-dynamic';
 
@@ -130,6 +131,36 @@ export async function POST(req: Request) {
     }
   });
 
+  // Upsert VenueProfile for crawl intelligence
+  if (domain) {
+    await prisma.venueProfile.upsert({
+      where: { domain },
+      create: {
+        domain,
+        name: venue.name,
+        eventsPageUrl: String(fields.websiteUrl ?? changeSet.sourceDocument.sourceUrl),
+        region: venue.region ?? 'global',
+        platformType: typeof fields.platformType === 'string' ? fields.platformType : null,
+        status: 'ACTIVE'
+      },
+      update: {
+        name: venue.name,
+        status: 'ACTIVE'
+      }
+    }).catch(() => {
+      // non-blocking
+    });
+  }
+
+  const trustedSourceResult = await registerVenueAsTrustedSource({
+    name: venue.name,
+    domain: domain ?? venue.name,
+    seedUrl: String(fields.websiteUrl ?? fields.eventsPageUrl ?? changeSet.sourceDocument.sourceUrl),
+    region: venue.region ?? 'global',
+    platformType: typeof fields.platformType === 'string' ? fields.platformType : null,
+    notes: `Promoted from venue intake. Source: ${changeSet.sourceDocument.sourceUrl}`
+  });
+
   await prisma.proposedChangeSet.update({
     where: { id: changeSet.id },
     data: { reviewStatus: 'approved', notes: `${changeSet.notes ?? ''} Promoted to Venue ${venue.id}.`.trim() }
@@ -141,11 +172,17 @@ export async function POST(req: Request) {
       stage: 'complete',
       status: 'success',
       message: `Promoted to Venue: ${venue.name} (id: ${venue.id})`,
-      detail: { venueId: venue.id, domain, slug }
+      detail: {
+        venueId: venue.id,
+        domain,
+        slug,
+        trustedSourceRegistered: trustedSourceResult.registered,
+        trustedSourceReason: trustedSourceResult.reason
+      }
     }
   }).catch(() => {
     // non-blocking
   });
 
-  return ok({ venue, promoted: true });
+  return ok({ venue, promoted: true, trustedSource: trustedSourceResult });
 }
