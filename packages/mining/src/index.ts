@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { Worker } from 'bullmq';
 import { Redis } from 'ioredis';
-import { readMiningRuntimeEnv } from './lib/env.js';
+import { getImportSecretFromEnv, readMiningRuntimeEnv } from './lib/env.js';
+import { listTrustedSources, registerTrustedSource } from './lib/trusted-source-admin.js';
 
 const runtimeEnv = (() => {
   try {
@@ -195,7 +196,7 @@ export async function runVerticalSlice() {
 
 function startHealthServer() {
   const port = runtimeEnv?.healthPort ?? 7301;
-  const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+  const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === '/healthz' || req.url === '/readyz') {
       const body = JSON.stringify({
         service: 'artio-mining',
@@ -204,6 +205,76 @@ function startHealthServer() {
       });
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(body);
+      return;
+    }
+
+    if (req.url === '/admin/trusted-sources') {
+      const secret = getImportSecretFromEnv();
+      const headerSecret = req.headers['x-mining-import-secret'];
+      const providedSecret = Array.isArray(headerSecret) ? headerSecret[0] : headerSecret;
+      if (!secret || !providedSecret || providedSecret !== secret) {
+        res.writeHead(401, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized' }));
+        return;
+      }
+
+      if (req.method === 'GET') {
+        const items = await listTrustedSources();
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ trustedSources: items }));
+        return;
+      }
+
+      if (req.method === 'POST') {
+        let body = '';
+        for await (const chunk of req) {
+          body += chunk.toString();
+        }
+
+        let payload: unknown = null;
+        try {
+          payload = body ? JSON.parse(body) : null;
+        } catch {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Invalid JSON body' }));
+          return;
+        }
+
+        const input = payload as Partial<{
+          name: string;
+          domain: string;
+          seedUrl: string;
+          sourceType: string;
+          region: string;
+          trustTier: number;
+          platformType: string | null;
+          notes: string;
+        }>;
+
+        if (!input?.name || !input.domain || !input.seedUrl || !input.sourceType || !input.region) {
+          res.writeHead(400, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing required fields' }));
+          return;
+        }
+
+        const result = await registerTrustedSource({
+          name: input.name,
+          domain: input.domain,
+          seedUrl: input.seedUrl,
+          sourceType: input.sourceType,
+          region: input.region,
+          trustTier: input.trustTier,
+          platformType: input.platformType,
+          notes: input.notes
+        });
+
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(result));
+        return;
+      }
+
+      res.writeHead(405, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Method not allowed' }));
       return;
     }
 
