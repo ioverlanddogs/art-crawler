@@ -4,6 +4,7 @@ import { fetchSource } from './fetch-source';
 import { fingerprintUrl } from './fingerprint';
 import { extractFields } from './extract-fields';
 import { matchCanonical } from './match-canonical';
+import { detectPlatform } from './platform-detector';
 
 export interface IntakeRunResult {
   sourceDocumentId: string;
@@ -43,7 +44,7 @@ export async function runIntake(
 
     const fetchResult = await fetchSource(input.sourceUrl);
 
-    await prisma.sourceDocument.update({
+    const updatedSourceDocument = await prisma.sourceDocument.update({
       where: { id: sourceDocument.id },
       data: {
         sourceUrl: fetchResult.finalUrl,
@@ -54,8 +55,64 @@ export async function runIntake(
         metadataJson: {
           contentType: fetchResult.contentType
         }
+      },
+      select: {
+        metadataJson: true
       }
     });
+
+    // Detect platform from fetched HTML and store on VenueProfile
+    if (!fetchResult.error && fetchResult.rawHtml) {
+      try {
+        const detection = detectPlatform({
+          url: fetchResult.finalUrl,
+          html: fetchResult.rawHtml
+        });
+
+        let hostname = '';
+        try {
+          hostname = new URL(fetchResult.finalUrl).hostname;
+        } catch {
+          // ignore
+        }
+
+        if (hostname) {
+          await prisma.venueProfile.upsert({
+            where: { domain: hostname },
+            create: {
+              domain: hostname,
+              region: 'global',
+              platformType: detection.platformType,
+              requiresJs: detection.requiresJs,
+              eventsPageUrl: fetchResult.finalUrl
+            },
+            update: {
+              platformType: detection.platformType,
+              requiresJs: detection.requiresJs
+            }
+          });
+        }
+
+        const sourceDocumentMetadataJson = updatedSourceDocument.metadataJson;
+        await prisma.sourceDocument.update({
+          where: { id: sourceDocument.id },
+          data: {
+            metadataJson: {
+              ...(typeof sourceDocumentMetadataJson === 'object' && sourceDocumentMetadataJson !== null
+                ? (sourceDocumentMetadataJson as Record<string, unknown>)
+                : {}),
+              contentType: fetchResult.contentType,
+              platformType: detection.platformType,
+              requiresJs: detection.requiresJs,
+              platformConfidence: detection.confidence,
+              platformSignals: detection.signals
+            }
+          }
+        });
+      } catch {
+        // platform detection is best-effort — never block the pipeline
+      }
+    }
 
     if (fetchResult.error) {
       await prisma.ingestionJob.update({
