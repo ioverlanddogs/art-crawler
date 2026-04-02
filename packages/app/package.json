@@ -18,7 +18,8 @@
     "prisma:migrate:deploy": "prisma migrate deploy --schema prisma/schema.prisma",
     "create:admin": "node --import tsx scripts/create-admin.ts",
     "seed:permanent-admin": "node --import tsx scripts/seed-permanent-admin.ts",
-    "bootstrap:prod-db": "node --import tsx scripts/bootstrap-production-db.ts"
+    "bootstrap:prod-db": "node --import tsx scripts/bootstrap-production-db.ts",
+    "reset:admin-password": "node --import tsx scripts/reset-admin-password.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

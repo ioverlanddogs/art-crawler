@@ -127,16 +127,16 @@ describe('auth middleware and login route consistency', () => {
     expect(pageSource).toContain('<LoginClient />');
   });
 
-  test('LoginClient supports credentials sign-in, callbackUrl handling, and optional Google fallback', async () => {
+  test('LoginClient supports credentials sign-in, callbackUrl handling, and always-visible Google sign-in', async () => {
     const loginClientSource = await fs.readFile(new URL('../app/(auth)/login/LoginClient.tsx', import.meta.url), 'utf8');
 
     expect(loginClientSource).toContain("signIn('credentials'");
     expect(loginClientSource).toContain('redirect: false');
     expect(loginClientSource).toContain('Email and password are required.');
     expect(loginClientSource).toContain("signIn('google', { callbackUrl })");
+    expect(loginClientSource).toContain("Break-glass access");
     expect(loginClientSource).toContain("searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL");
     expect(loginClientSource).toContain("DEFAULT_CALLBACK_URL = '/dashboard'");
-    expect(loginClientSource).toContain("NEXT_PUBLIC_GOOGLE_AUTH_ENABLED === 'true'");
     expect(loginClientSource).toContain('result?.error ?? null');
   });
 });

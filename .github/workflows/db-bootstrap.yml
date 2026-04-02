@@ -103,3 +103,14 @@ jobs:
             args+=(--admin-name "$BOOTSTRAP_ADMIN_NAME")
           fi
           npm run bootstrap:prod-db -w @artio/app -- "${args[@]}"
+
+      - name: Force-update admin password (ensures passwordHash is never null)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run reset:admin-password -w @artio/app
+        env:
+          DATABASE_URL: ${{ env.DATABASE_URL }}
+          DATABASE_URL_DIRECT: ${{ env.DATABASE_URL_DIRECT }}
+          BOOTSTRAP_ADMIN_EMAIL: ${{ env.BOOTSTRAP_ADMIN_EMAIL }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ env.BOOTSTRAP_ADMIN_PASSWORD }}
