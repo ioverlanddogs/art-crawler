@@ -125,6 +125,7 @@ describe('auth middleware and login route consistency', () => {
     expect(pageSource).toContain("import LoginClient from './LoginClient'");
     expect(pageSource).toContain('<Suspense fallback={<LoginFallback />}>');
     expect(pageSource).toContain('<LoginClient />');
+    expect(pageSource).toContain("export const dynamic = 'force-dynamic';");
   });
 
   test('LoginClient supports credentials sign-in, callbackUrl handling, and always-visible Google sign-in', async () => {
@@ -133,8 +134,10 @@ describe('auth middleware and login route consistency', () => {
     expect(loginClientSource).toContain("signIn('credentials'");
     expect(loginClientSource).toContain('redirect: false');
     expect(loginClientSource).toContain('Email and password are required.');
-    expect(loginClientSource).toContain("signIn('google', { callbackUrl })");
+    expect(loginClientSource).toContain("signIn('google', { callbackUrl, redirect: true })");
+    expect(loginClientSource).toContain('window.location.href = `/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`');
     expect(loginClientSource).toContain("Break-glass access");
+    expect(loginClientSource).toContain('Click here instead');
     expect(loginClientSource).toContain("searchParams.get('callbackUrl') || DEFAULT_CALLBACK_URL");
     expect(loginClientSource).toContain("DEFAULT_CALLBACK_URL = '/dashboard'");
     expect(loginClientSource).toContain('result?.error ?? null');

@@ -34,7 +34,17 @@ export default function LoginClient() {
   async function handleGoogleSignIn() {
     setLoading(true);
     setErrorMessage(null);
-    await signIn('google', { callbackUrl });
+    try {
+      const result = await signIn('google', { callbackUrl, redirect: true });
+      if (result) {
+        console.error('[login] signIn returned unexpectedly:', result);
+        setErrorMessage('Unable to initiate Google sign-in. Please try again.');
+        setLoading(false);
+      }
+    } catch (error: unknown) {
+      console.error('[login] signIn threw:', error);
+      window.location.href = `/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`;
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -79,6 +89,12 @@ export default function LoginClient() {
       >
         {loading ? 'Redirecting...' : 'Sign in with Google'}
       </button>
+      <p style={{ marginTop: 8, fontSize: 13, color: '#6b7280' }}>
+        Button not working?{' '}
+        <a href={`/api/auth/signin/google?callbackUrl=${encodeURIComponent(callbackUrl)}`} style={{ color: '#4285f4' }}>
+          Click here instead
+        </a>
+      </p>
       <hr style={{ margin: '24px 0' }} />
       <details>
         <summary style={{ cursor: 'pointer', color: '#6b7280', fontSize: 14, marginBottom: 16 }}>Break-glass access</summary>
