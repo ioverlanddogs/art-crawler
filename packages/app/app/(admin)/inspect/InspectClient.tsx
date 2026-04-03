@@ -142,8 +142,7 @@ export default function InspectClient({ initialUrl = '' }: { initialUrl?: string
 
     setFetching(true);
     setFetchError(null);
-    setFetchResult(null);
-    setMessages([]);
+        setMessages([]);
     setIngestResult(null);
     setChatError(null);
 
@@ -414,9 +413,27 @@ export default function InspectClient({ initialUrl = '' }: { initialUrl?: string
             opacity: fetching || !urlInput.trim() ? 0.6 : 1,
           }}
         >
-          {fetching ? 'Fetching…' : 'Fetch and analyse'}
-        </button>
-      </form>
+          {fetching ? 'Fetching page…' : 'Fetch and analyse'}
+        </button>      </form>
+
+      {fetching ? (
+        <div style={{
+          padding: '12px 16px',
+          background: 'var(--surface-muted)',
+          borderRadius: 6,
+          border: '1px solid var(--border)',
+          fontSize: 13,
+          color: 'var(--text-muted)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10
+        }}>
+          <span style={{ animation: 'pulse 1.5s ease-in-out infinite', display: 'inline-block' }}>
+            ⏳
+          </span>
+          Fetching page and detecting platform — this may take a few seconds for large or slow sites…
+        </div>
+      ) : null}
 
       {fetchError ? (
         <p

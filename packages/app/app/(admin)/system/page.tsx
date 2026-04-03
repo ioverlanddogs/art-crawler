@@ -18,6 +18,9 @@ import { getApiKeyStatuses } from '@/lib/api-key-status';
 import { prisma } from '@/lib/db';
 import { PROVIDER_MODELS } from '@/lib/ai/provider-selector';
 import { isDatabaseRuntimeReady } from '@/lib/runtime-env';
+import { ProviderSwitcher } from './ProviderSwitcher';
+import { ModelSwitcher } from './ModelSwitcher';
+import { SearchProviderSwitcher } from './SearchProviderSwitcher';
 
 export const dynamic = 'force-dynamic';
 
@@ -198,136 +201,20 @@ export default async function SystemPage() {
         title="AI extraction provider"
         subtitle="Select which AI provider and model powers field extraction in the intake pipeline."
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 0' }}>
-          {(['anthropic', 'openai', 'gemini'] as const).map((provider) => {
-            const labels: Record<string, string> = {
-              anthropic: 'Anthropic (Claude)',
-              openai: 'OpenAI (GPT)',
-              gemini: 'Google Gemini'
-            };
-            const envVars: Record<string, string> = {
-              anthropic: 'ANTHROPIC_API_KEY',
-              openai: 'OPENAI_API_KEY',
-              gemini: 'GEMINI_API_KEY'
-            };
-            const keyPresent = aiKeys.find((k) => k.envVar === envVars[provider])?.present ?? false;
-            const isActive = activeProvider === provider;
-            return (
-              <div
-                key={provider}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 14px',
-                  borderRadius: 6,
-                  border: `1px solid ${isActive ? 'var(--primary)' : 'var(--border)'}`,
-                  background: isActive ? 'var(--primary-soft)' : 'var(--surface)'
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 500, fontSize: 14 }}>{labels[provider]}</span>
-                  {' '}
-                  <code style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {envVars[provider]}
-                  </code>
-                </div>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    background: keyPresent ? 'var(--success-soft)' : 'var(--surface-muted)',
-                    color: keyPresent ? 'var(--success)' : 'var(--text-muted)'
-                  }}
-                >
-                  {keyPresent ? 'Key configured' : 'Key missing'}
-                </span>
-                {isActive ? (
-                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--primary)', minWidth: 80, textAlign: 'right' }}>
-                    Active
-                  </span>
-                ) : (
-                  <form
-                    action="/api/admin/config/ai-provider"
-                    method="POST"
-                    style={{ minWidth: 80, textAlign: 'right' }}
-                  >
-                    <input type="hidden" name="provider" value={provider} />
-                    <button
-                      type="submit"
-                      disabled={!keyPresent}
-                      style={{
-                        fontSize: 12,
-                        padding: '4px 12px',
-                        borderRadius: 4,
-                        border: '1px solid var(--border)',
-                        background: 'var(--surface)',
-                        cursor: keyPresent ? 'pointer' : 'not-allowed',
-                        color: keyPresent ? 'var(--text)' : 'var(--text-muted)'
-                      }}
-                    >
-                      Use this
-                    </button>
-                  </form>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <ProviderSwitcher
+          activeProvider={activeProvider}
+          aiKeys={aiKeys}
+        />
 
         {(['anthropic', 'openai', 'gemini'] as const).includes(activeProvider) && (
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
             <p style={{ fontSize: 13, fontWeight: 500, marginBottom: 10 }}>
               Model for {activeProvider === 'anthropic' ? 'Anthropic' : activeProvider === 'openai' ? 'OpenAI' : 'Gemini'}
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {PROVIDER_MODELS[activeProvider].map((m) => {
-                const isActiveModel = activeModelId === m.id ||
-                  (!activeModelId && PROVIDER_MODELS[activeProvider][0].id === m.id);
-                return (
-                  <div
-                    key={m.id}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '8px 12px',
-                      borderRadius: 6,
-                      border: `1px solid ${isActiveModel ? 'var(--primary)' : 'var(--border)'}`,
-                      background: isActiveModel ? 'var(--primary-soft)' : 'var(--surface)'
-                    }}
-                  >
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontWeight: 500, fontSize: 13 }}>{m.label}</span>
-                      {' '}
-                      <code style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.id}</code>
-                    </div>
-                    {isActiveModel ? (
-                      <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--primary)', minWidth: 80, textAlign: 'right' }}>
-                        Active
-                      </span>
-                    ) : (
-                      <form action="/api/admin/config/ai-model" method="POST" style={{ minWidth: 80, textAlign: 'right' }}>
-                        <input type="hidden" name="model" value={m.id} />
-                        <button type="submit" style={{
-                          fontSize: 12,
-                          padding: '4px 12px',
-                          borderRadius: 4,
-                          border: '1px solid var(--border)',
-                          background: 'var(--surface)',
-                          cursor: 'pointer',
-                          color: 'var(--text)'
-                        }}>
-                          Use this
-                        </button>
-                      </form>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            <ModelSwitcher
+              activeModelId={activeModelId}
+              models={PROVIDER_MODELS[activeProvider]}
+            />
           </div>
         )}
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
@@ -339,80 +226,10 @@ export default async function SystemPage() {
         title="Search provider"
         subtitle="Select which search engine powers the custom search prompt. Used when an admin runs a manual discovery search."
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 0' }}>
-          {(['brave', 'google_cse'] as const).map((provider) => {
-            const labels: Record<string, string> = {
-              brave: 'Brave Search',
-              google_cse: 'Google Custom Search'
-            };
-            const requiredKeys: Record<string, string[]> = {
-              brave: ['BRAVE_SEARCH_API_KEY'],
-              google_cse: ['GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_ID']
-            };
-            const keyPresent = requiredKeys[provider].every(
-              (envVar) => searchKeys.find((k) => k.envVar === envVar)?.present ?? false
-            );
-            const isActive = activeSearchProvider === provider;
-            return (
-              <div
-                key={provider}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 12,
-                  padding: '10px 14px',
-                  borderRadius: 6,
-                  border: `1px solid ${isActive ? 'var(--primary)' : 'var(--border)'}`,
-                  background: isActive ? 'var(--primary-soft)' : 'var(--surface)'
-                }}
-              >
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontWeight: 500, fontSize: 14 }}>{labels[provider]}</span>
-                  {' '}
-                  <code style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                    {requiredKeys[provider].join(' + ')}
-                  </code>
-                </div>
-                <span
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 500,
-                    padding: '2px 8px',
-                    borderRadius: 4,
-                    background: keyPresent ? 'var(--success-soft)' : 'var(--surface-muted)',
-                    color: keyPresent ? 'var(--success)' : 'var(--text-muted)'
-                  }}
-                >
-                  {keyPresent ? 'Keys configured' : 'Keys missing'}
-                </span>
-                {isActive ? (
-                  <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--primary)', minWidth: 80, textAlign: 'right' }}>
-                    Active
-                  </span>
-                ) : (
-                  <form action="/api/admin/config/search-provider" method="POST" style={{ minWidth: 80, textAlign: 'right' }}>
-                    <input type="hidden" name="provider" value={provider} />
-                    <button
-                      type="submit"
-                      disabled={!keyPresent}
-                      style={{
-                        fontSize: 12,
-                        padding: '4px 12px',
-                        borderRadius: 4,
-                        border: '1px solid var(--border)',
-                        background: 'var(--surface)',
-                        cursor: keyPresent ? 'pointer' : 'not-allowed',
-                        color: keyPresent ? 'var(--text)' : 'var(--text-muted)'
-                      }}
-                    >
-                      Use this
-                    </button>
-                  </form>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <SearchProviderSwitcher
+          activeSearchProvider={activeSearchProvider}
+          searchKeys={searchKeys}
+        />
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
           Add missing keys in Vercel → Settings → Environment Variables, then redeploy.
         </p>

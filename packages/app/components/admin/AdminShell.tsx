@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -12,7 +12,10 @@ import type { AdminEnvironment, AdminNavGroup, AdminUserInfo } from './types';
 function pageTitleFromPath(pathname: string, navGroups: AdminNavGroup[]): string {
   for (const group of navGroups) {
     for (const item of group.items) {
-      if (pathname === item.href) return item.label;
+      const isMatch = item.href === '/'
+        ? pathname === '/'
+        : pathname === item.href || pathname.startsWith(item.href + '/');
+      if (isMatch) return item.label;
     }
   }
   return 'Admin';
@@ -48,6 +51,12 @@ export function AdminShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const PRIMARY_NAV_HREFS = new Set([
+    '/dashboard', '/inspect', '/search', '/venues', '/intake',
+    '/moderation', '/publish', '/artists', '/artworks'
+  ]);
+
+  const SECONDARY_DIVIDER_BEFORE = new Set(['/duplicates']);
   const router = useRouter();
   const searchParams = useSearchParams();
   const scope = parseAdminScope(searchParams.get('scope') ?? undefined);
@@ -107,10 +116,33 @@ export function AdminShell({
                     ? pathname === '/'
                     : pathname === item.href || pathname.startsWith(item.href + '/');
                 return (
-                  <Link key={item.href} href={withScopeQuery(item.href, scope)} className={`nav-link ${active ? 'active' : ''}`}>
-                    <span>{item.label}</span>
-                    {typeof item.badgeCount === 'number' ? <span className="nav-badge">{item.badgeCount}</span> : null}
-                  </Link>
+                  <Fragment key={`nav-${item.href}`}>
+                    {SECONDARY_DIVIDER_BEFORE.has(item.href) ? (
+                      <hr key={`divider-${item.href}`} style={{
+                        border: 'none',
+                        borderTop: '1px solid var(--border)',
+                        margin: '0.35rem 0'
+                      }} />
+                    ) : null}
+                    <Link
+                      key={item.href}
+                      href={withScopeQuery(item.href, scope)}
+                      className={`nav-link ${active ? 'active' : ''}`}
+                      style={{
+                        fontSize: PRIMARY_NAV_HREFS.has(item.href) ? 14 : 13,
+                        color: active
+                          ? '#122b89'
+                          : PRIMARY_NAV_HREFS.has(item.href)
+                            ? '#1f2937'
+                            : 'var(--text-muted)'
+                      }}
+                    >
+                      <span>{item.label}</span>
+                      {typeof item.badgeCount === 'number' ? (
+                        <span className="nav-badge">{item.badgeCount}</span>
+                      ) : null}
+                    </Link>
+                  </Fragment>
                 );
               })}
             </nav>
