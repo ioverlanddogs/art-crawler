@@ -104,11 +104,11 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
       recommendReviewActions({
         unresolvedDuplicateCount: data.validationSummary.blockers.filter((blocker) => blocker.toLowerCase().includes('duplicate')).length,
         lowConfidenceCount: data.fieldReviews.filter((fieldReview) => (fieldReview.confidence ?? 1) < 0.75).length,
-        unreviewedCount: data.fieldReviews.filter((fieldReview) => !fieldReview.decision).length,
+        unreviewedCount,
         conflictCount: data.diffResult.fields.filter((field) => field.state === 'conflicting').length,
         staleHours: Math.max(0, (Date.now() - new Date(data.sourceDocument.fetchedAt ?? Date.now()).getTime()) / 3600000)
       }),
-    [data]
+    [data, unreviewedCount]
   );
 
   useEffect(() => {
