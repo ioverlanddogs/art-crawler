@@ -95,6 +95,10 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
     [data.proposedDataJson]
   );
   const focusedField = fields[focusedIndex]?.fieldPath ?? null;
+  const unreviewedCount = fields.filter(({ fieldPath }) => {
+    const review = data.fieldReviews.find((r) => r.fieldPath === fieldPath);
+    return !review || review.decision == null;
+  }).length;
   const reviewRecommendations = useMemo(
     () =>
       recommendReviewActions({
@@ -330,7 +334,9 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
         {safeFieldsResult ? (
           <p className="kpi-note">
             Auto-approved {safeFieldsResult.updated} field(s)
-            {safeFieldsResult.skipped.length > 0 ? `; skipped ${safeFieldsResult.skipped.length} (${safeFieldsResult.skipped.map((item) => `${item.fieldPath}: ${item.reason}`).join(', ')})` : ''}.
+            {(safeFieldsResult.skipped?.length ?? 0) > 0
+              ? `; skipped ${safeFieldsResult.skipped!.length} (${safeFieldsResult.skipped!.map((item) => `${item.fieldPath}: ${item.reason}`).join(', ')})`
+              : ''}.
           </p>
         ) : null}
         <div className="stack">
@@ -344,8 +350,18 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
             </p>
           ) : (
             <>
-              <button type="button" className="action-button variant-primary" onClick={approve} disabled={busy !== null}>
-                Approve and merge
+              <button
+                type="button"
+                className="action-button variant-primary"
+                onClick={approve}
+                disabled={busy !== null || unreviewedCount > 0}
+                title={unreviewedCount > 0 ? `${unreviewedCount} field(s) still need review` : 'Approve and create event'}
+              >
+                {busy === 'approve'
+                  ? 'Approving…'
+                  : unreviewedCount > 0
+                    ? `${unreviewedCount} field${unreviewedCount !== 1 ? 's' : ''} need review`
+                    : 'Approve and merge'}
               </button>
               <button type="button" className="action-button variant-secondary" onClick={approveSafeFields} disabled={busy !== null}>
                 Approve all safe fields
