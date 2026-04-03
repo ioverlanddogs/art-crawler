@@ -94,6 +94,7 @@ export default async function WorkbenchPage({ params }: { params: { changeSetId:
             ...changeSet.sourceDocument,
             metadataJson: asRecord(changeSet.sourceDocument.metadataJson)
           },
+          sourceType: changeSet.sourceDocument.sourceType ?? null,
           currentUserRole: session.user.role,
           notes: changeSet.notes ?? null,
           validationSummary: checkPublishReadiness({

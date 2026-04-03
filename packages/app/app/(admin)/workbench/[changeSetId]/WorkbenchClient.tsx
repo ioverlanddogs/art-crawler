@@ -29,6 +29,7 @@ interface WorkbenchData {
   id: string;
   sourceDocumentId: string;
   matchedEventId: string | null;
+  sourceType: string | null;
   proposedDataJson: Record<string, unknown>;
   reviewStatus: string;
   notes: string | null;
@@ -87,6 +88,7 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
   const [notesDraft, setNotesDraft] = useState(data.notes ?? '');
   const [busy, setBusy] = useState<'approve' | 'reject' | 'draft' | 'safe' | 'reparse' | null>(null);
   const [safeFieldsResult, setSafeFieldsResult] = useState<{ updated: number; skipped: Array<{ fieldPath: string; reason: string }> } | null>(null);
+  const isGallerySource = data.sourceType === 'gallery';
 
   const fields = useMemo(
     () => Object.entries(data.proposedDataJson ?? {}).map(([fieldPath, value]) => ({ fieldPath, value })),
@@ -336,12 +338,20 @@ export function WorkbenchClient({ initialData }: { initialData: WorkbenchData })
           <textarea id="review-notes" className="text-area" value={notesDraft} onChange={(event) => setNotesDraft(event.target.value)} placeholder="Context for other operators and publish reviewers" />
         </div>
         <div className="filters-row">
-          <button type="button" className="action-button variant-primary" onClick={approve} disabled={busy !== null}>
-            Approve and merge
-          </button>
-          <button type="button" className="action-button variant-secondary" onClick={approveSafeFields} disabled={busy !== null}>
-            Approve all safe fields
-          </button>
+          {isGallerySource ? (
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>
+              Gallery extractions are promoted to Venue records — use the "Promote to Venue" section above rather than approving fields here.
+            </p>
+          ) : (
+            <>
+              <button type="button" className="action-button variant-primary" onClick={approve} disabled={busy !== null}>
+                Approve and merge
+              </button>
+              <button type="button" className="action-button variant-secondary" onClick={approveSafeFields} disabled={busy !== null}>
+                Approve all safe fields
+              </button>
+            </>
+          )}
           <button type="button" className="action-button variant-secondary" onClick={saveDraft} disabled={busy !== null}>
             Save draft
           </button>
